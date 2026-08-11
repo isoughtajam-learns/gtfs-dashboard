@@ -39,3 +39,25 @@ If you are developing a production application, we recommend enabling type-aware
 ```
 
 See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+
+## Local Development
+
+Set the following environment variables:
+```
+export LOCAL_API_URL=http://127.0.0.1:8000
+```
+
+Then run the frontend:
+```
+npm run dev
+```
+
+Navigate to [localhost:8080](localhost:8080).
+
+## Local Docker Development
+First run this in the backend repo:
+```
+docker compose up --build
+```
+
+Then run the same thing in the frontend repo and once it completes, navigate to [localhost:5173](localhost:5173)
