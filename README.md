@@ -28,6 +28,7 @@ Navigate to [localhost:5173](localhost:5173)
 
 ## Appreciation
 https://gtfs.org/documentation/overview/ - details on the spec for Realtime and Schedule data, both of which are used here
+
 https://mobilitydatabase.org - info about many available GTFS feeds from around the world
 
 *Powered by coffee, Claude, Google Antigravity, and Jetbrains*
