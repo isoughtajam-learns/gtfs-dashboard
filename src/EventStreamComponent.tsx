@@ -20,6 +20,10 @@ type TripUpdate = {
 // so nothing in the payload is unique across the rolling window.
 type StreamedUpdate = TripUpdate & { seq: number };
 
+// Relative so it resolves against whatever host serves the app: nginx proxies /api/
+// in the container, Vite's dev server proxies it locally.
+const STREAM_URL = "/api/trip_updates/BART";
+
 // The server names every event, so `onmessage` (unnamed events only) never fires.
 const EVENT_NAME = "trip_update";
 const MAX_MESSAGES = 50;
@@ -69,7 +73,7 @@ export default function EventStreamComponent() {
         let disposed = false;
 
         const connect = () => {
-            eventSource = new EventSource("http://127.0.0.1:8000/trip_updates/BART");
+            eventSource = new EventSource(STREAM_URL);
 
             eventSource.onopen = () => {
                 attempt = 0;
