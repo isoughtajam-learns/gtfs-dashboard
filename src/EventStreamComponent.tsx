@@ -20,10 +20,6 @@ type TripUpdate = {
 // so nothing in the payload is unique across the rolling window.
 type StreamedUpdate = TripUpdate & { seq: number };
 
-// Relative so it resolves against whatever host serves the app: nginx proxies /api/
-// in the container, Vite's dev server proxies it locally.
-const STREAM_URL = "/api/trip_updates/BART";
-
 // The server names every event, so `onmessage` (unnamed events only) never fires.
 const EVENT_NAME = "trip_update";
 const MAX_MESSAGES = 50;
@@ -57,9 +53,14 @@ const bodyCellSx: SxProps<Theme> = {
     fontSize: "x-small",
     color: "common.white",
     borderColor: (theme) => alpha(theme.palette.primary.main, 0.4),
+    minWidth: 'auto',
 };
 
-export default function EventStreamComponent() {
+type EventStreamComponentProps = {
+    systemId: string;
+};
+
+export default function EventStreamComponent({ systemId }: EventStreamComponentProps) {
     const [messages, setMessages] = useState<StreamedUpdate[]>([]);
     const [connected, setConnected] = useState(false);
     // A ref, not an effect-local counter: it has to outlive reconnects and StrictMode's
@@ -67,13 +68,23 @@ export default function EventStreamComponent() {
     const seqRef = useRef(0);
 
     useEffect(() => {
+        // Empty until the transit system list has loaded and picked a default.
+        if (!systemId) return;
+
+        // Switching systems starts a fresh window rather than mixing feeds.
+        setMessages([]);
+
         let eventSource: EventSource | null = null;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
         let attempt = 0;
         let disposed = false;
 
+        // Relative so it resolves against whatever host serves the app: nginx proxies
+        // /api/ in the container, Vite's dev server proxies it locally.
+        const streamUrl = `/api/trip_updates/${systemId}`;
+
         const connect = () => {
-            eventSource = new EventSource(STREAM_URL);
+            eventSource = new EventSource(streamUrl);
 
             eventSource.onopen = () => {
                 attempt = 0;
@@ -112,7 +123,7 @@ export default function EventStreamComponent() {
             clearTimeout(retryTimer);
             eventSource?.close();
         };
-    }, []);
+    }, [systemId]);
 
     return (
         <TableContainer component={Paper} variant="outlined" sx={{ fontFamily: FONT, borderColor: "primary.main" }}>
@@ -154,6 +165,7 @@ export default function EventStreamComponent() {
                                             whiteSpace: "nowrap",
                                             backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, theme.palette.primary.main)} ${PILL_MUTE * 100}%, ${theme.palette.background.paper})`,
                                             color: toCssColor(message.text_color, theme.palette.primary.contrastText),
+                                            width: "auto",
                                         })}
                                     >
                                         { message.trip_headsign }
