@@ -1,0 +1,68 @@
+# HTTPS listener for the Cloudflare "Full (strict)" SSL/TLS mode:
+# Cloudflare's edge connects to this origin over TLS on 443, presenting
+# ssl_certificate as proof the origin is legitimate. Staged into the image at
+# build time but only promoted into /etc/nginx/templates/ (and therefore only
+# processed/loaded by nginx) when TLS_CERT/TLS_KEY are present at container
+# startup — see docker-entrypoint.d/15-enable-tls.sh — so local dev and any
+# deployment without those env vars set are unaffected.
+#
+# Kept as a separate server block from nginx.conf.template's port-80 one
+# rather than sharing includes: envsubst only expands ${VAR} in files it
+# treats as top-level templates, and a bare `location` snippet can't be
+# `include`d as its own template without nginx trying to load it as a
+# standalone server config. Duplication is the lesser evil — keep the
+# location blocks below in sync with nginx.conf.template if either changes.
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name localhost;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    ssl_certificate     /etc/nginx/certs/origin.pem;
+    ssl_certificate_key /etc/nginx/certs/origin.key;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Gzip Compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 10240;
+    gzip_proxied expired no-cache no-store private auth;
+    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript;
+    gzip_disable "MSIE [1-6]\.";
+
+    # Use Docker's internal DNS resolver
+    resolver 127.0.0.11 valid=30s;
+
+    # Reverse proxy for API requests using envsubst variable
+    location /api/ {
+        set $upstream ${BACKEND_URL};
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $upstream;
+        proxy_http_version 1.1;
+
+        # SSE: never buffer the stream, and don't cut it off during quiet stretches.
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Serve static files and fallback to index.html for React Router
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Caching for static assets
+    location ~* \.(?:ico|css|js|gif|jpe?g|png|woff2?|eot|ttf|svg)$ {
+        expires 6M;
+        access_log off;
+        add_header Cache-Control "public, max-age=15552000, immutable";
+    }
+}
