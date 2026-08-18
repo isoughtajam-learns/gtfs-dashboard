@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Terraform local state/cache - can contain secret ARNs and other
+# environment-specific data, never commit
+deployment/.terraform/
+deployment/*.tfstate
+deployment/*.tfstate.*
+deployment/tfplan*
+deployment/*.tfvars
