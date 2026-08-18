@@ -54,6 +54,11 @@ const bodyCellSx: SxProps<Theme> = {
     color: "common.white",
     borderColor: (theme) => alpha(theme.palette.primary.main, 0.4),
     minWidth: 'auto',
+    // Belt-and-suspenders alongside the headsign pill's own maxWidth/ellipsis:
+    // some browsers resolve a percentage-based maxWidth on a descendant
+    // inconsistently inside a table-layout:fixed cell, so the cell itself
+    // also clips rather than relying solely on the child computing it right.
+    overflow: 'hidden',
 };
 
 type EventStreamComponentProps = {
@@ -163,9 +168,11 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                             py: 0.25,
                                             borderRadius: "999px",
                                             whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
                                             backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, theme.palette.primary.main)} ${PILL_MUTE * 100}%, ${theme.palette.background.paper})`,
                                             color: toCssColor(message.text_color, theme.palette.primary.contrastText),
-                                            width: "auto",
+                                            maxWidth: "100%",
                                         })}
                                     >
                                         { message.trip_headsign }
