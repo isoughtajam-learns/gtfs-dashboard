@@ -75,10 +75,20 @@
   flex-direction: column;
   box-sizing: border-box;
   font-family: "WU3 Segments Regular", sans-serif;
+  /* Safety net: no descendant (e.g. a header that doesn't quite fit a narrow
+     screen) should ever be able to drag the whole page into horizontal
+     scroll. Scrollable regions like the event table's TableContainer manage
+     their own internal overflow-x and are unaffected by this. */
+  overflow-x: hidden;
 }
 
 body {
   margin: 0;
+  /* Explicit rather than relying on inheriting :root's background: MUI's
+     Menu/Select popover pads body on open to compensate for the scrollbar it
+     hides, and without an explicit color that padding area can render
+     unpainted (a black band) on some mobile browsers. */
+  background: var(--bg);
 }
 
 h1,

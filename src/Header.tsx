@@ -41,10 +41,13 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     component="a"
                     href="/"
                     aria-label="IRL Transit home"
-                    sx={{ display: "flex", alignItems: "center", flexGrow: 1, color: "inherit", textDecoration: "none" }}
+                    sx={{ display: "flex", alignItems: "center", flexGrow: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}
                 >
-                    <Box sx={{ width: 40, height: 40, flexShrink: 0 }} aria-hidden="true" />
-                    <Typography variant="h6" component="span" sx={{ ml: 2, textAlign: "left", fontFamily: "var(--heading)" }}>
+                    <Typography
+                        variant="h6"
+                        component="span"
+                        sx={{ textAlign: "left", fontFamily: "var(--heading)", fontSize: { xs: "1rem", sm: "1.25rem" } }}
+                    >
                         <SplitFlapTitle
                             textA="IRL Transit"
                             textB="[Real-time transit info]"
@@ -61,11 +64,17 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     inputProps={{ "aria-label": "Transit system" }}
                     sx={{
                         color: "inherit",
-                        mr: 2,
-                        minWidth: 160,
+                        mr: { xs: 1, sm: 2 },
+                        minWidth: { xs: 70, sm: 160 },
+                        maxWidth: { xs: 90, sm: 220 },
                         fontFamily: "Noto Sans, sans-serif",
                         "& .MuiSelect-icon": { color: "inherit" },
-                        "& .MuiSelect-select": { textAlign: "right" },
+                        "& .MuiSelect-select": {
+                            textAlign: "right",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                        },
                     }}
                 >
                     {systems.map((system) => (
