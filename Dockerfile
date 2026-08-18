@@ -23,7 +23,7 @@ RUN rm -rf /usr/share/nginx/html/*
 
 # Copy the custom nginx configuration template
 # The nginx image automatically runs envsubst on files in /etc/nginx/templates/
-COPY nginx.conf /etc/nginx/templates/default.conf.template
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Copy the build output from the build stage to nginx's web root
 COPY --from=build /app/dist /usr/share/nginx/html
