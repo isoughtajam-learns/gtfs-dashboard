@@ -1,15 +1,36 @@
-version: '3.8'
-
 services:
   frontend:
-    build: .
+    build:
+      context: .
+      target: dev
     ports:
-      - "8080:80"
+      - "5173:5173"
     environment:
       # In production, this can be changed to an external URL (e.g. https://api.example.com)
       BACKEND_URL: "http://backend:8000"
+    volumes:
+      - ./:/app
+      # Shadows the bind mount above at this path: the container's own
+      # node_modules (installed for Alpine/Linux) must not be replaced by
+      # whatever's in the host's ./node_modules (e.g. built for macOS).
+      - frontend_node_modules:/app/node_modules
+    develop:
+      watch:
+        # Source changes are already live via the bind mount + Vite's own
+        # dev-server file watching (HMR) - no sync action needed for those.
+        # package.json needs an actual image rebuild (re-running `npm
+        # install` into the fresh image layer). Deliberately NOT also
+        # watching package-lock.json: the dev stage's `npm install` on
+        # container start can itself touch that bind-mounted file (e.g.
+        # reconciling platform-specific optional deps) - watching it too
+        # would make that write re-trigger this same rebuild, forever.
+        - action: rebuild
+          path: package.json
     networks:
       - gtfs-network
+
+volumes:
+  frontend_node_modules:
 
 networks:
   gtfs-network:
