@@ -34,9 +34,36 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
 
     const handleSystemChange = (event: SelectChangeEvent) => onSystemChange(event.target.value);
 
+    // Bahnhof design system (bahnhof-design-spec.md) - a raised surface
+    // (--bg-elev) with a hairline divider, matching the flat, square-cornered
+    // treatment used everywhere else (no elevation shadow).
+    const menuPaperSx = {
+        backgroundColor: "var(--bg-elev)",
+        border: "1px solid var(--line)",
+        borderRadius: "var(--radius)",
+        color: "var(--ink)",
+        fontFamily: "var(--font-display)",
+    };
+    const menuItemSx = {
+        fontFamily: "var(--font-display)",
+        "&:hover": { backgroundColor: "color-mix(in srgb, var(--brass) 16%, transparent)" },
+        "&.Mui-selected": {
+            backgroundColor: "color-mix(in srgb, var(--brass) 22%, transparent)",
+            "&:hover": { backgroundColor: "color-mix(in srgb, var(--brass) 28%, transparent)" },
+        },
+    };
+
     return (
-        <AppBar position="static" color="primary" enableColorOnDark>
-            <Toolbar>
+        <AppBar
+            position="static"
+            elevation={0}
+            sx={{
+                backgroundColor: "var(--bg-elev)",
+                borderBottom: "1px solid var(--line)",
+                color: "var(--ink)",
+            }}
+        >
+            <Toolbar sx={{ gap: { xs: 1, sm: 2 } }}>
                 <Box
                     component="a"
                     href="/"
@@ -46,12 +73,15 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     <Typography
                         variant="h6"
                         component="span"
-                        sx={{ textAlign: "left", fontFamily: "var(--heading)", fontSize: { xs: "1rem", sm: "1.25rem" } }}
+                        sx={{ textAlign: "left", fontWeight: 700, fontSize: { xs: "1.05rem", sm: "1.3rem" } }}
                     >
                         <SplitFlapTitle
                             textA="IRL Transit"
-                            textB="[Real-time transit info]"
-                            fontFamilyB="Noto Sans, sans-serif"
+                            textB="[real-time transit info]"
+                            fontFamilyA="var(--font-display)"
+                            fontFamilyB="var(--font-body)"
+                            colorA="var(--brass)"
+                            colorB="var(--ink-dim)"
                         />
                     </Typography>
                 </Box>
@@ -62,23 +92,38 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     variant="standard"
                     disableUnderline
                     inputProps={{ "aria-label": "Transit system" }}
+                    MenuProps={{ slotProps: { paper: { sx: menuPaperSx } } }}
                     sx={{
-                        color: "inherit",
+                        color: "var(--ink)",
                         mr: { xs: 1, sm: 2 },
-                        minWidth: { xs: 70, sm: 160 },
-                        maxWidth: { xs: 90, sm: 220 },
-                        fontFamily: "Noto Sans, sans-serif",
-                        "& .MuiSelect-icon": { color: "inherit" },
+                        maxWidth: { xs: 140, sm: 220 },
+                        fontFamily: "var(--font-display)",
+                        // Same recipe as the table's status pill background,
+                        // per your steer - a shrink-to-fit pill rather than a
+                        // fixed-width box, so the arrow sits right after the
+                        // name instead of pinned to a far-right edge. Root
+                        // becomes a flex row (select-value + icon) so the
+                        // icon, taken out of MUI's default absolute
+                        // positioning below, lands inline right after the
+                        // text and centers on the row via alignItems.
+                        display: "inline-flex",
+                        alignItems: "center",
+                        backgroundColor: "color-mix(in srgb, var(--ink-dim) 20%, transparent)",
+                        borderRadius: "20px",
+                        "& .MuiSelect-icon": { color: "var(--brass)", position: "static", marginRight: "10px" },
                         "& .MuiSelect-select": {
-                            textAlign: "right",
+                            textAlign: "left",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
+                            py: "4px !important",
+                            pl: "12px !important",
+                            pr: "4px !important",
                         },
                     }}
                 >
                     {systems.map((system) => (
-                        <MenuItem key={system.id} value={system.id} sx={{ justifyContent: "flex-end" }}>
+                        <MenuItem key={system.id} value={system.id} sx={menuItemSx}>
                             {system.label}
                         </MenuItem>
                     ))}
@@ -86,18 +131,24 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                 <IconButton
                     size="large"
                     edge="end"
-                    color="inherit"
                     aria-label="page menu"
                     aria-controls={menuOpen ? "page-menu" : undefined}
                     aria-haspopup="true"
                     aria-expanded={menuOpen ? "true" : undefined}
                     onClick={handleMenuOpen}
+                    sx={{ color: "var(--brass)" }}
                 >
                     <MenuIcon />
                 </IconButton>
-                <Menu id="page-menu" anchorEl={anchorEl} open={menuOpen} onClose={handleMenuClose}>
+                <Menu
+                    id="page-menu"
+                    anchorEl={anchorEl}
+                    open={menuOpen}
+                    onClose={handleMenuClose}
+                    slotProps={{ paper: { sx: menuPaperSx } }}
+                >
                     {PAGES.map((page) => (
-                        <MenuItem key={page.label} onClick={handleMenuClose}>
+                        <MenuItem key={page.label} onClick={handleMenuClose} sx={menuItemSx}>
                             {page.label}
                         </MenuItem>
                     ))}

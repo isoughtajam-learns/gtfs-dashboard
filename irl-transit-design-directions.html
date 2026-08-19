@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IRL Transit — Design Directions</title>
+<style>
+
+/* ============ THEME TOKENS ============ */
+
+:root{
+  --radius: 4px;
+  --transition: 220ms cubic-bezier(.4,0,.2,1);
+}
+
+/* --- Theme 1: Bahnhof (vintage European station) --- */
+.theme-bahnhof{
+  --bg: #17231d;
+  --bg-elev: #1f2f27;
+  --panel: #223328;
+  --ink: #f1e9d3;
+  --ink-dim: #b9ae93;
+  --brass: #c9a24a;
+  --brass-bright: #e6c268;
+  --rust: #a3492f;
+  --line: #3a4b3f;
+  --ok: #7c9a6a;
+  --display: 'Bahnhof-Serif', Georgia, 'Times New Roman', serif;
+  --body: 'Bahnhof-Sans', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Bahnhof-Flap', 'Courier New', monospace;
+  --radius: 2px;
+}
+
+/* --- Theme 2: Meridian Park (bright, friendly, colorful) --- */
+.theme-park{
+  --bg: #fbf6e9;
+  --bg-elev: #ffffff;
+  --panel: #ffffff;
+  --ink: #21422f;
+  --ink-dim: #5c7a63;
+  --brass: #ff8a3d;      /* coral/orange accent */
+  --brass-bright: #ffa85e;
+  --rust: #e0533f;
+  --line: #e4dcc2;
+  --ok: #2f9e5b;
+  --sky: #4fa6d8;
+  --display: 'Park-Round', 'Segoe UI', system-ui, sans-serif;
+  --body: 'Park-Body', 'Segoe UI', system-ui, sans-serif;
+  --mono: 'Park-Mono', 'Courier New', monospace;
+  --radius: 18px;
+}
+
+/* --- Theme 3: TERMINAL (vintage computing / TRON) --- */
+.theme-terminal{
+  --bg: #060a09;
+  --bg-elev: #0a1210;
+  --panel: #0c1615;
+  --ink: #9dffe0;
+  --ink-dim: #4f8f7f;
+  --brass: #35f0c0;
+  --brass-bright: #7dffdb;
+  --rust: #ff5c5c;
+  --line: #16332c;
+  --ok: #35f0c0;
+  --display: 'Term-Mono', 'IBM Plex Mono', 'Courier New', monospace;
+  --body: 'Term-Mono', 'IBM Plex Mono', 'Courier New', monospace;
+  --mono: 'Term-Mono', 'IBM Plex Mono', 'Courier New', monospace;
+  --radius: 0px;
+}
+
+@font-face{ font-family:'Bahnhof-Serif'; src:local('Georgia'); }
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  background:var(--bg);
+  color:var(--ink);
+  font-family:var(--body);
+  transition:background var(--transition), color var(--transition);
+  min-height:100vh;
+}
+
+/* ============ SWITCHER ============ */
+.switcher{
+  position:sticky; top:0; z-index:50;
+  display:flex; gap:8px; padding:14px 20px;
+  background:rgba(10,10,10,0.0);
+  backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line);
+  align-items:center;
+  flex-wrap:wrap;
+}
+.switcher .label{ font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-dim); margin-right:6px; font-family:var(--mono); }
+.switcher button{
+  font-family:var(--body);
+  font-size:13px;
+  padding:8px 14px;
+  border-radius:999px;
+  border:1px solid var(--line);
+  background:var(--panel);
+  color:var(--ink-dim);
+  cursor:pointer;
+  transition:all var(--transition);
+}
+.switcher button.active{
+  background:var(--brass);
+  color:var(--bg);
+  border-color:var(--brass);
+  font-weight:700;
+}
+
+.wrap{ max-width:1180px; margin:0 auto; padding:36px 20px 100px; }
+
+/* ============ HERO ============ */
+.hero{ margin-bottom:44px; }
+.hero .eyebrow{ font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--brass); margin-bottom:10px; }
+.hero h1{ font-family:var(--display); font-size:44px; line-height:1.05; margin:0 0 12px; font-weight:700; }
+.hero p{ color:var(--ink-dim); max-width:560px; font-size:15px; line-height:1.55; margin:0; }
+
+/* ============ SECTION LABEL ============ */
+.section-label{ font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 14px; display:flex; align-items:center; gap:10px; }
+.section-label::after{ content:''; flex:1; height:1px; background:var(--line); }
+.section{ margin-bottom:52px; }
+
+/* ============ LAYOUT GRID ============ */
+.grid{ display:grid; grid-template-columns: 1.4fr 1fr; gap:20px; }
+@media(max-width:860px){ .grid{ grid-template-columns:1fr; } }
+
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:20px;
+}
+.panel h3{ font-family:var(--display); margin:0 0 4px; font-size:19px; }
+.panel .sub{ color:var(--ink-dim); font-size:12.5px; margin:0 0 16px; }
+
+/* ============ DEPARTURE TABLE ============ */
+table.board{ width:100%; border-collapse:collapse; font-family:var(--mono); font-size:13px; }
+table.board th{ text-align:left; padding:8px 10px; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); border-bottom:1px solid var(--line); font-weight:600; }
+table.board td{ padding:11px 10px; border-bottom:1px solid var(--line); }
+table.board tr:last-child td{ border-bottom:none; }
+.line-chip{ display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:6px; font-weight:700; font-size:12px; color:#fff; }
+.status{ font-size:11.5px; padding:3px 8px; border-radius:20px; font-family:var(--body); }
+.status.ontime{ background:color-mix(in srgb, var(--ok) 22%, transparent); color:var(--ok); }
+.status.delay{ background:color-mix(in srgb, var(--rust) 22%, transparent); color:var(--rust); }
+
+/* Bahnhof split-flap treatment */
+.theme-bahnhof table.board td.mins{ font-family:var(--mono); letter-spacing:.05em; }
+.theme-bahnhof table.board tr{ position:relative; }
+
+/* Terminal treatment: scanlines + blinking cursor */
+.theme-terminal .panel{ position:relative; overflow:hidden; box-shadow: 0 0 0 1px var(--line), 0 0 22px -6px var(--brass); }
+.theme-terminal .panel::before{
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background:repeating-linear-gradient(0deg, rgba(53,240,192,0.035) 0px, rgba(53,240,192,0.035) 1px, transparent 1px, transparent 3px);
+  mix-blend-mode:overlay;
+}
+.theme-terminal table.board td, .theme-terminal table.board th{ text-transform:uppercase; }
+.cursor{ display:inline-block; width:7px; height:14px; background:var(--brass); animation:blink 1s steps(2) infinite; vertical-align:-2px; }
+@keyframes blink{ 50%{ opacity:0; } }
+.theme-terminal .hero h1, .theme-terminal .panel h3{ text-shadow:0 0 10px color-mix(in srgb, var(--brass) 55%, transparent); }
+
+/* Park treatment: rounded cheerful rows */
+.theme-park table.board td, .theme-park table.board th{ padding-left:14px; }
+.theme-park table.board tr td:first-child{ border-top-left-radius:12px; border-bottom-left-radius:12px; }
+.theme-park .panel{ box-shadow:0 4px 20px -8px rgba(80,60,20,0.15); }
+
+/* ============ MAP MOCK ============ */
+.map-mock{ position:relative; height:260px; border-radius:calc(var(--radius) + 2px); overflow:hidden; border:1px solid var(--line); background:var(--bg-elev); }
+.map-mock svg{ width:100%; height:100%; display:block; }
+
+/* ============ POI LIST ============ */
+.poi-item{ display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+.poi-item:last-child{ border-bottom:none; }
+.poi-icon{ width:36px; height:36px; border-radius:var(--radius); background:var(--bg-elev); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; border:1px solid var(--line); }
+.poi-name{ font-weight:700; font-size:13.5px; margin-bottom:2px; }
+.poi-meta{ font-size:11.5px; color:var(--ink-dim); font-family:var(--mono); }
+
+/* ============ NOTIF PANEL ============ */
+.station-pill{ display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border-radius:999px; border:1px solid var(--line); font-size:12.5px; margin:0 8px 8px 0; background:var(--bg-elev); }
+.toggle{ width:34px; height:19px; border-radius:20px; background:var(--line); position:relative; display:inline-block; }
+.toggle.on{ background:var(--ok); }
+.toggle::after{ content:''; position:absolute; width:15px; height:15px; border-radius:50%; background:#fff; top:2px; left:2px; transition:left var(--transition); }
+.toggle.on::after{ left:17px; }
+
+/* ============ NOTES PANEL ============ */
+.note-block{ font-size:13.5px; line-height:1.6; color:var(--ink-dim); }
+.note-block strong{ color:var(--ink); }
+.note-tag{ font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--brass); border:1px solid var(--brass); padding:2px 7px; border-radius:20px; }
+
+/* ============ SIGNATURE CALLOUTS per theme ============ */
+.theme-bahnhof .signature-note::before{ content:'⌗ Split-flap board motion on data refresh — each row rotates like a real Solari board.'; }
+.theme-park .signature-note::before{ content:'⌗ Routes rendered as winding trail paths, stations as trailhead pins.'; }
+.theme-terminal .signature-note::before{ content:'⌗ Live positions plotted on a glowing coordinate grid, like radar/ATC displays.'; }
+.signature-note{ font-family:var(--mono); font-size:11.5px; color:var(--brass); margin-top:12px; padding-top:12px; border-top:1px dashed var(--line); }
+
+footer{ text-align:center; padding:40px 20px; color:var(--ink-dim); font-size:12px; font-family:var(--mono); }
+</style>
+</head>
+<body class="theme-bahnhof">
+
+<div class="switcher">
+  <span class="label">Direction</span>
+  <button class="active" data-theme="theme-bahnhof">Bahnhof — vintage station</button>
+  <button data-theme="theme-park">Meridian Park — bright &amp; friendly</button>
+  <button data-theme="theme-terminal">Terminal — vintage computing / TRON</button>
+</div>
+
+<div class="wrap">
+
+  <section class="hero">
+    <div class="eyebrow" id="eyebrow">01 — Live Departures</div>
+    <h1 id="hero-title">Every train, right now.</h1>
+    <p id="hero-sub">A single board for every system you ride — arrivals, delays, and the ones worth chasing down the platform for.</p>
+  </section>
+
+  <!-- LIVE TABLE -->
+  <section class="section">
+    <div class="section-label">Live Board</div>
+    <div class="panel">
+      <h3>Downtown / Civic Center</h3>
+      <p class="sub">BART · MUNI Metro · Caltrain — updated <span id="ts">4s ago</span><span class="cursor" style="display:none" id="cursorEl"></span></p>
+      <table class="board">
+        <thead><tr><th>Line</th><th>Destination</th><th>Mins</th><th>Platform</th><th>Status</th></tr></thead>
+        <tbody id="board-body">
+          <!-- rows injected -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- MAP + NOTIFICATIONS -->
+  <section class="section">
+    <div class="section-label">System Map &amp; Alerts</div>
+    <div class="grid">
+      <div class="panel">
+        <h3>System Map</h3>
+        <p class="sub">Realtime vehicle positions along the route network</p>
+        <div class="map-mock" id="mapMock"></div>
+        <div class="signature-note"></div>
+      </div>
+      <div class="panel">
+        <h3>Proximity Notifications</h3>
+        <p class="sub">Get notified when a train is close to your chosen stations</p>
+        <div style="margin-bottom:14px;">
+          <span class="station-pill">Powell St <span class="toggle on"></span></span>
+          <span class="station-pill">24th St Mission <span class="toggle on"></span></span>
+          <span class="station-pill">+ Add station</span>
+        </div>
+        <div class="note-block">
+          <strong>Next alert:</strong> Red Line arriving Powell St in <strong>3 min</strong> — notify at 5 min out.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POI + NOTES -->
+  <section class="section">
+    <div class="section-label">Points of Interest &amp; Route Notes</div>
+    <div class="grid">
+      <div class="panel">
+        <h3>Along the Red Line</h3>
+        <p class="sub">Sourced near stations on your route</p>
+        <div class="poi-item"><div class="poi-icon">☕</div><div><div class="poi-name">Ritual Coffee</div><div class="poi-meta">2 min walk · Powell St</div></div></div>
+        <div class="poi-item"><div class="poi-icon">📚</div><div><div class="poi-name">Main Library</div><div class="poi-meta">4 min walk · Civic Center</div></div></div>
+        <div class="poi-item"><div class="poi-icon">🌳</div><div><div class="poi-name">Yerba Buena Gardens</div><div class="poi-meta">6 min walk · Powell St</div></div></div>
+      </div>
+      <div class="panel">
+        <h3>Route Notes <span class="note-tag">community</span></h3>
+        <p class="sub">User-written context on this node</p>
+        <div class="note-block">
+          <strong>24th St Mission:</strong> North entrance closes 10pm–5am. Use 24th &amp; Bartlett gate instead. Elevator out as of Aug 12 — reported by 3 riders.
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<footer>IRL Transit — design direction study — irltransit.gautamjoshi.com</footer>
+
+<script>
+const lineColors = { 'BART':'#8b3a3a', 'MUNI':'#3a6b8b', 'CT':'#5a7a4a' };
+const rows = [
+  { line:'RED', full:'BART Red', dest:'Richmond', mins:3, plat:'2', status:'ontime', color:'#a3492f' },
+  { line:'GRN', full:'MUNI N', dest:'Ocean Beach', mins:6, plat:'1', status:'delay', color:'#3a6b8b' },
+  { line:'YEL', full:'BART Yellow', dest:'Antioch', mins:9, plat:'3', status:'ontime', color:'#c9a24a' },
+  { line:'CT', full:'Caltrain Local', dest:'San Jose', mins:14, plat:'B', status:'ontime', color:'#4f7a52' },
+  { line:'BLU', full:'BART Blue', dest:'Daly City', mins:17, plat:'2', status:'delay', color:'#2f4f7a' },
+];
+
+function renderRows(){
+  const body = document.getElementById('board-body');
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td><span class="line-chip" style="background:${r.color}">${r.line}</span></td>
+      <td>${r.dest}</td>
+      <td class="mins">${r.mins} min</td>
+      <td>${r.plat}</td>
+      <td><span class="status ${r.status==='ontime'?'ontime':'delay'}">${r.status==='ontime'?'On time':'Delayed'}</span></td>
+    </tr>
+  `).join('');
+}
+renderRows();
+
+// simple ticking timestamp
+let sec = 4;
+setInterval(()=>{ sec = (sec % 55) + 1; document.getElementById('ts').textContent = sec + 's ago'; }, 1000);
+
+// Map mock per theme
+function drawMap(theme){
+  const el = document.getElementById('mapMock');
+  const stroke = theme === 'theme-terminal' ? '#35f0c0' : theme === 'theme-park' ? '#ff8a3d' : '#c9a24a';
+  const bg = getComputedStyle(document.body).getPropertyValue('--bg-elev').trim();
+  let extra = '';
+  if(theme === 'theme-terminal'){
+    extra = `<g stroke="#16332c" stroke-width="1">
+      ${Array.from({length:12}).map((_,i)=>`<line x1="${i*40}" y1="0" x2="${i*40}" y2="260" />`).join('')}
+      ${Array.from({length:7}).map((_,i)=>`<line x1="0" y1="${i*40}" x2="480" y2="${i*40}" />`).join('')}
+    </g>`;
+  } else if(theme === 'theme-park'){
+    extra = `<circle cx="90" cy="60" r="26" fill="#bfe3c7" opacity="0.6"/><circle cx="360" cy="190" r="34" fill="#bfe3c7" opacity="0.5"/>`;
+  } else {
+    extra = `<g stroke="#3a4b3f" stroke-width="1" opacity="0.5">
+      ${Array.from({length:5}).map((_,i)=>`<line x1="0" y1="${i*55}" x2="480" y2="${i*55}" />`).join('')}
+    </g>`;
+  }
+  el.innerHTML = `<svg viewBox="0 0 480 260" preserveAspectRatio="none">
+    <rect width="480" height="260" fill="${bg}"/>
+    ${extra}
+    <path d="M20,220 C120,180 160,100 260,90 S420,40 460,20" fill="none" stroke="${stroke}" stroke-width="${theme==='theme-park'?8:3}" stroke-linecap="round" opacity="${theme==='theme-terminal'?0.9:1}"/>
+    <path d="M40,40 C100,80 180,190 300,200 S420,180 450,230" fill="none" stroke="${stroke}" stroke-width="${theme==='theme-park'?8:3}" stroke-linecap="round" opacity="0.55"/>
+    ${[[20,220],[130,150],[260,90],[350,55],[460,20]].map(([x,y])=>`<circle cx="${x}" cy="${y}" r="${theme==='theme-park'?7:5}" fill="${stroke}"/>`).join('')}
+    <circle cx="230" cy="120" r="6" fill="${stroke}">
+      <animate attributeName="r" values="5;9;5" dur="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;0.4;1" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+  </svg>`;
+}
+
+const heroCopy = {
+  'theme-bahnhof': { eyebrow:'01 — Departures Board', title:'Every train, right now.', sub:'A single board for every system you ride — arrivals, delays, and the ones worth chasing down the platform for.' },
+  'theme-park': { eyebrow:'Today on the network', title:'See your ride coming.', sub:'One friendly map of every train near you — where it is, when it lands, and what is worth a stop along the way.' },
+  'theme-terminal': { eyebrow:'SYS://LIVE_FEED', title:'TRACK_ALL_TRAINS.EXE', sub:'Realtime telemetry across every connected transit system. Positions update on refresh. No polling delay tolerated.' },
+};
+
+function applyTheme(theme){
+  document.body.className = theme;
+  document.querySelectorAll('.switcher button').forEach(b => b.classList.toggle('active', b.dataset.theme === theme));
+  const copy = heroCopy[theme];
+  document.getElementById('eyebrow').textContent = copy.eyebrow;
+  document.getElementById('hero-title').textContent = copy.title;
+  document.getElementById('hero-sub').textContent = copy.sub;
+  document.getElementById('cursorEl').style.display = theme === 'theme-terminal' ? 'inline-block' : 'none';
+  drawMap(theme);
+}
+
+document.querySelectorAll('.switcher button').forEach(b=>{
+  b.addEventListener('click', ()=> applyTheme(b.dataset.theme));
+});
+
+applyTheme('theme-bahnhof');
+</script>
+
+</body>
+</html>
