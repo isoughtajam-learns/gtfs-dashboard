@@ -22,9 +22,15 @@ Navigate to [localhost:8080](localhost:8080).
 If you haven't set up [gtfs-realtime]() do that first.
 
 ```
-docker compose up --build
+docker compose up --build --watch
 ```
 Navigate to [localhost:5173](localhost:5173)
+
+Runs the Vite dev server in the container with the repo bind-mounted, so any change under
+`gtfs-dashboard/` hot-reloads immediately. The `--watch` flag additionally rebuilds the image
+(and reinstalls dependencies) automatically whenever `package.json`/`package-lock.json` change —
+without it, `docker compose up --build` alone won't notice a dependency change after the container
+is already running.
 
 ### Production Deployment (HTTPS behind Cloudflare)
 Production runs on ECS (see [gtfs-realtime](../gtfs-realtime)'s `deployment/main.tf`), not

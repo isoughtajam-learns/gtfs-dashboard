@@ -15,6 +15,27 @@ COPY . .
 # Build the Vite application
 RUN npm run build
 
+# Dev stage: hot-reloading Vite dev server for local Docker development
+# (docker-compose.yml's `frontend` service targets this, not the default
+# final stage below - `docker build .` / deploy.sh are unaffected).
+# node_modules is a named volume in compose (not the bind-mounted source),
+# since the host's node_modules (e.g. built for macOS) isn't binary-compatible
+# with this Alpine/Linux image - `npm install` at container start reconciles
+# that volume against whatever package.json currently says, every start.
+# (`npm install`, not `ci`: this package-lock.json has platform-specific
+# optional deps that differ between macOS and Linux, and each platform's own
+# `npm install` self-heals its side - `ci`'s strict exact-match check just
+# fights that back and forth. This can touch the bind-mounted lockfile on
+# container start, which is why docker-compose.yml's watch config only
+# triggers a rebuild on package.json, not package-lock.json - otherwise that
+# write would trigger another rebuild, forever.)
+FROM node:20-alpine AS dev
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+EXPOSE 5173
+CMD ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0"]
+
 # Production stage
 FROM nginx:alpine
 
