@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {Box, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
-import { alpha } from "@mui/material/styles";
 import type { SxProps, Theme } from "@mui/material/styles";
+import { keyframes } from "@emotion/react";
 
 type TripUpdate = {
     trip_id: string;
@@ -25,41 +25,57 @@ const EVENT_NAME = "trip_update";
 const MAX_MESSAGES = 50;
 const MAX_RETRY_DELAY_MS = 30_000;
 
-const FONT = "WU3 Segments Regular";
-
-// Eggplant header against the gray paper, with the light pink as the divider tint.
+// Bahnhof design system (bahnhof-design-spec.md). Every cell sets
+// fontFamily explicitly rather than relying on inheriting it from the
+// <Table>'s own sx: MUI's TableCell/TableHead assert their own
+// theme-driven font-family directly, which wins over an ancestor's
+// inherited value the way plain HTML/CSS wouldn't.
 const headCellSx: SxProps<Theme> = {
-    fontFamily: FONT,
-    fontSize: "small",
-    backgroundColor: "primary.main",
-    color: "primary.contrastText",
-    borderColor: (theme) => alpha(theme.palette.primary.light, 0.5),
+    fontFamily: "var(--font-mono)",
+    fontSize: "0.65625rem", // 10.5px
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+    fontWeight: 600,
+    color: "var(--ink-dim)",
+    borderColor: "var(--line)",
 };
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
-// raw feed value is not a valid CSS color. Falls back to palette tokens when absent.
+// raw feed value is not a valid CSS color. Falls back to theme tokens when absent.
 const toCssColor = (value: string | null | undefined, fallback: string) => {
     if (!value) return fallback;
     return /^[0-9A-Fa-f]{6}$/.test(value) ? `#${value}` : value;
 };
 
-// Fraction of the feed color kept in a pill; the rest blends toward the paper so
-// saturated route colors sit back a little. An opaque blend rather than alpha(),
-// since the row striping underneath would otherwise tint alternating rows.
-const PILL_MUTE = 0.52;
+// Fraction of the feed's route color kept in the headsign chip; the rest blends
+// toward the panel background so saturated colors sit back a little instead of
+// glaring against the muted Bahnhof palette. Uniform across all routes.
+const HEADSIGN_MUTE = 0.7;
 
-const bodyCellSx: SxProps<Theme> = {
-    fontFamily: FONT,
-    fontSize: "x-small",
-    color: "common.white",
-    borderColor: (theme) => alpha(theme.palette.primary.main, 0.4),
+const bodyCellSx = {
+    fontFamily: "var(--font-mono)",
+    fontSize: "0.71875rem",
+    color: "var(--ink)",
+    borderColor: "var(--line)",
     minWidth: 'auto',
-    // Belt-and-suspenders alongside the headsign pill's own maxWidth/ellipsis:
+    // Belt-and-suspenders alongside the headsign chip's own maxWidth/ellipsis:
     // some browsers resolve a percentage-based maxWidth on a descendant
     // inconsistently inside a table-layout:fixed cell, so the cell itself
     // also clips rather than relying solely on the child computing it right.
     overflow: 'hidden',
 };
+
+// Departure-board flip: each newly-arrived row rotates in around its top
+// edge, like a Solari split-flap panel dropping into place. Triggered purely
+// by CSS-on-mount (no JS diffing of "changed" fields) — the row list is a
+// rolling log where every SSE event is inherently a brand-new row (see the
+// seq comment above), so "only changed rows animate" here means "only the
+// row that just arrived animates": existing rows keep their DOM node (same
+// `key`) as they shift position, so this animation never re-fires for them.
+const flapIn = keyframes`
+    from { transform: rotateX(-90deg); opacity: 0; }
+    to { transform: rotateX(0deg); opacity: 1; }
+`;
 
 type EventStreamComponentProps = {
     systemId: string;
@@ -131,60 +147,101 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
     }, [systemId]);
 
     return (
-        <TableContainer component={Paper} variant="outlined" sx={{ fontFamily: FONT, borderColor: "primary.main" }}>
+        <TableContainer
+            component={Paper}
+            sx={{
+                fontFamily: "var(--font-body)",
+                backgroundColor: "var(--panel)",
+                border: "1px solid var(--line)",
+                borderRadius: "var(--radius)",
+                boxShadow: "none",
+            }}
+        >
             { !connected && (
-                <Box role="status" sx={{ fontFamily: FONT, fontSize: "x-small", px: 2, py: 0.5, backgroundColor: "secondary.main", color: "secondary.contrastText" }}>
+                <Box
+                    role="status"
+                    sx={{
+                        fontFamily: "var(--font-body)",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                        px: 2,
+                        py: 0.5,
+                        backgroundColor: "color-mix(in srgb, var(--rust) 22%, transparent)",
+                        color: "var(--rust)",
+                    }}
+                >
                     Reconnecting&hellip; arrival times may be stale.
                 </Box>
             )}
-            <Table sx={{ minWidth: 650, tableLayout: 'fixed' }} aria-label="simple table">
-                <TableHead sx={{ fontSize: "small" }}>
+            <Table sx={{ minWidth: 650, tableLayout: 'fixed', borderCollapse: 'collapse', perspective: '600px', fontFamily: "var(--font-mono)" }} aria-label="simple table">
+                <TableHead>
                     <TableRow>
-                        <TableCell sx={headCellSx}>Headsign</TableCell>
+                        <TableCell sx={headCellSx}>Line</TableCell>
                         <TableCell align="right" sx={headCellSx}>Station</TableCell>
                         {/*<TableCell align="right" sx={headCellSx}>Last</TableCell>*/}
                         <TableCell align="right" sx={headCellSx}>Status</TableCell>
                         <TableCell align="right" sx={headCellSx}>Next</TableCell>
-                        <TableCell align="right" sx={headCellSx}>Vehicle</TableCell>
                     </TableRow>
                 </TableHead>
                 <TableBody>
                     {messages.map((message) => (
                         <TableRow
                             key={ message.seq }
-                            sx={(theme) => ({
-                                '&:nth-of-type(odd)': { backgroundColor: alpha(theme.palette.primary.light, 0.18) },
-                                '&:hover': { backgroundColor: alpha(theme.palette.secondary.main, 0.28) },
+                            sx={{
+                                animation: `${flapIn} 180ms ease-out`,
+                                transformOrigin: "top",
+                                // No zebra striping (Bahnhof spec: row borders only).
+                                '&:hover': { backgroundColor: "var(--bg-elev)" },
                                 '&:last-child td, &:last-child th': { border: 0 },
-                            })}
+                            }}
                         >
                             <TableCell component="th" scope="row" sx={bodyCellSx}>
                                 { message.trip_headsign != null && (
                                     <Box
                                         component="span"
-                                        sx={(theme) => ({
+                                        sx={{
                                             display: "inline-block",
                                             px: 1,
                                             py: 0.25,
-                                            borderRadius: "999px",
+                                            borderRadius: "6px",
+                                            fontWeight: 700,
                                             whiteSpace: "nowrap",
                                             overflow: "hidden",
                                             textOverflow: "ellipsis",
-                                            backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, theme.palette.primary.main)} ${PILL_MUTE * 100}%, ${theme.palette.background.paper})`,
-                                            color: toCssColor(message.text_color, theme.palette.primary.contrastText),
+                                            backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--brass)")} ${HEADSIGN_MUTE * 100}%, var(--panel))`,
+                                            color: toCssColor(message.text_color, "#fff"),
                                             maxWidth: "100%",
-                                        })}
+                                        }}
                                     >
                                         { message.trip_headsign }
                                     </Box>
                                 )}
                             </TableCell>
                             <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>
-                            <TableCell align="right" sx={bodyCellSx}>{ message.status }</TableCell>
+                            <TableCell align="right" sx={bodyCellSx}>
+                                {/* Neutral treatment: "Stopped"/"In Transit" is a motion
+                                    state, not schedule adherence, so both statuses use the
+                                    same coloring rather than the spec's --ok/--rust pair
+                                    (which would misleadingly imply one is "bad"). */}
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        display: "inline-block",
+                                        px: 1,
+                                        py: 0.375,
+                                        borderRadius: "20px",
+                                        backgroundColor: "color-mix(in srgb, var(--ink-dim) 20%, transparent)",
+                                        color: "var(--ink-dim)",
+                                    }}
+                                >
+                                    { message.status }
+                                </Box>
+                            </TableCell>
                             <Tooltip title={message.status == "Stopped" ? "Previous Arrival: "  + new Date(message.previous * 1000).toLocaleTimeString() : "Previous Departure: " + new Date(message.previous * 1000).toLocaleTimeString()}>
-                                <TableCell align="right" sx={bodyCellSx}>{ new Date(message.next * 1000).toLocaleTimeString() }</TableCell>
+                                <TableCell align="right" sx={[bodyCellSx, { letterSpacing: "0.05em" }]}>
+                                    { new Date(message.next * 1000).toLocaleTimeString() }
+                                </TableCell>
                             </Tooltip>
-                            <TableCell align="right" sx={bodyCellSx}>{ message.vehicle }</TableCell>
                         </TableRow>
                     ))}
                 </TableBody>

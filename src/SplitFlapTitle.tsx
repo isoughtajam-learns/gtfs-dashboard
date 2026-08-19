@@ -6,7 +6,13 @@ type SplitFlapTitleProps = {
     textB: string;
     fontFamilyA?: string;
     fontFamilyB?: string;
-    intervalMs?: number;
+    colorA?: string;
+    colorB?: string;
+    // Asymmetric dwell times: how long each face stays up before flipping to
+    // the other. Not a single fixed cadence - textA and textB can (and here,
+    // do) spend different amounts of time showing.
+    textADurationMs?: number;
+    textBDurationMs?: number;
     flipDurationMs?: number;
 };
 
@@ -17,7 +23,10 @@ export default function SplitFlapTitle({
     textB,
     fontFamilyA,
     fontFamilyB,
-    intervalMs = 3500,
+    colorA,
+    colorB,
+    textADurationMs = 4200,
+    textBDurationMs = 800,
     flipDurationMs = 600,
 }: SplitFlapTitleProps) {
     const [flipped, setFlipped] = useState(false);
@@ -25,9 +34,13 @@ export default function SplitFlapTitle({
     const [width, setWidth] = useState<number | null>(null);
 
     useEffect(() => {
-        const id = setInterval(() => setFlipped((f) => !f), intervalMs);
-        return () => clearInterval(id);
-    }, [intervalMs]);
+        // Re-armed after every flip (not a fixed-cadence setInterval), since
+        // the two faces dwell for different lengths of time: whichever face
+        // is showing right now determines how long until the next flip.
+        const duration = flipped ? textBDurationMs : textADurationMs;
+        const id = setTimeout(() => setFlipped((f) => !f), duration);
+        return () => clearTimeout(id);
+    }, [flipped, textADurationMs, textBDurationMs]);
 
     // The two faces are different strings (and possibly different fonts) at
     // different natural widths; measure both up front so the card has a
@@ -89,7 +102,7 @@ export default function SplitFlapTitle({
                 <Box
                     component="span"
                     aria-hidden="true"
-                    sx={{ position: "absolute", inset: 0, backfaceVisibility: "hidden", whiteSpace: "pre", fontFamily: fontFamilyA }}
+                    sx={{ position: "absolute", inset: 0, backfaceVisibility: "hidden", whiteSpace: "pre", fontFamily: fontFamilyA, color: colorA }}
                 >
                     {textA}
                 </Box>
@@ -103,6 +116,7 @@ export default function SplitFlapTitle({
                         transform: "rotateX(180deg)",
                         whiteSpace: "pre",
                         fontFamily: fontFamilyB,
+                        color: colorB,
                     }}
                 >
                     {textB}

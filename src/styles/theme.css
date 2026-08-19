@@ -1,0 +1,38 @@
+/* "Bahnhof" design system — see bahnhof-design-spec.md at the repo root.
+   Self-hosted fonts (matching this project's existing convention for WU3/
+   Noto Sans) rather than the spec's Google Fonts @import, so the app doesn't
+   depend on Google's CDN being reachable at runtime. */
+
+@font-face {
+  font-family: "Inter";
+  src: local('Inter'), url('../assets/Inter-Variable.woff2') format('woff2-variations');
+  font-weight: 400 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg:          #17231d;  /* app background */
+  --bg-elev:     #1f2f27;  /* raised surfaces, map background */
+  --panel:       #223328;  /* cards, table containers */
+  --line:        #3a4b3f;  /* borders, dividers, gridlines */
+
+  --ink:         #f1e9d3;  /* primary text */
+  --ink-dim:     #b9ae93;  /* secondary text, labels, captions */
+
+  --brass:       #c9a24a;  /* primary accent — links, active states, icons */
+  --brass-bright:#e6c268;  /* hover/active variant of brass */
+
+  --ok:          #7c9a6a;  /* on-time / success status */
+  --rust:        #a3492f;  /* delayed / cancelled / error status */
+
+  --radius: 2px;  /* almost square — this theme does NOT use rounded corners */
+
+  /* Matches irl-transit-design-directions.html's Bahnhof display font
+     exactly: that file's own @font-face for 'Bahnhof-Serif' just aliases to
+     local('Georgia') with no other source, so referencing the stack
+     directly is equivalent without the pointless indirection. */
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Courier New', monospace;
+}
