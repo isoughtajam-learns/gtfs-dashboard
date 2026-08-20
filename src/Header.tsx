@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { MouseEvent } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { SelectChangeEvent } from "@mui/material";
 import { AppBar, Box, IconButton, Menu, MenuItem, Select, Toolbar, Typography } from "@mui/material";
 import SplitFlapTitle from "./SplitFlapTitle.tsx";
@@ -14,9 +15,10 @@ function MenuIcon() {
     );
 }
 
-// Pages this menu can navigate to. Only one exists today; add entries here as more pages land.
-const PAGES = [
-    { label: "Event Stream" },
+// Pages this menu can navigate to. Add entries here as more pages land.
+const PAGES: { path: string; label: string }[] = [
+    { path: "/", label: "Arrivals" },
+    { path: "/about", label: "About" },
 ];
 
 type HeaderProps = {
@@ -28,6 +30,8 @@ type HeaderProps = {
 export default function Header({ systems, selectedSystemId, onSystemChange }: HeaderProps) {
     const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
     const menuOpen = Boolean(anchorEl);
+    const location = useLocation();
+    const navigate = useNavigate();
 
     const handleMenuOpen = (event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
     const handleMenuClose = () => setAnchorEl(null);
@@ -65,8 +69,8 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
         >
             <Toolbar sx={{ gap: { xs: 1, sm: 2 } }}>
                 <Box
-                    component="a"
-                    href="/"
+                    component={Link}
+                    to="/"
                     aria-label="IRL Transit home"
                     sx={{ display: "flex", alignItems: "center", flexGrow: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}
                 >
@@ -85,7 +89,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                         />
                     </Typography>
                 </Box>
-                <Select
+                {location.pathname === "/" && <Select
                     value={selectedSystemId}
                     onChange={handleSystemChange}
                     size="small"
@@ -127,7 +131,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                             {system.label}
                         </MenuItem>
                     ))}
-                </Select>
+                </Select>}
                 <IconButton
                     size="large"
                     edge="end"
@@ -148,7 +152,12 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     slotProps={{ paper: { sx: menuPaperSx } }}
                 >
                     {PAGES.map((page) => (
-                        <MenuItem key={page.label} onClick={handleMenuClose} sx={menuItemSx}>
+                        <MenuItem
+                            key={page.path}
+                            selected={page.path === location.pathname}
+                            onClick={() => { void navigate(page.path); handleMenuClose(); }}
+                            sx={menuItemSx}
+                        >
                             {page.label}
                         </MenuItem>
                     ))}

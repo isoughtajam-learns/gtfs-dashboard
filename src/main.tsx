@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import posthog from 'posthog-js'
 import './index.css'
 import './styles/theme.css'
@@ -19,7 +20,9 @@ if (import.meta.env.VITE_POSTHOG_KEY) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
       <ThemeProvider theme={theme}>
-          <App />
+          <BrowserRouter>
+              <App />
+          </BrowserRouter>
       </ThemeProvider>
   </StrictMode>
 )
