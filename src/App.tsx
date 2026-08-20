@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Routes, Route } from 'react-router-dom'
 import './App.css'
 import EventStreamComponent from "./EventStreamComponent.tsx";
 import Header from "./Header.tsx";
+import About from "./About.tsx";
 import { fetchTransitSystems } from "./transitSystems.ts";
 import type { TransitSystem } from "./transitSystems.ts";
 import {Grid} from "@mui/material";
@@ -57,10 +59,17 @@ function App() {
 
   return (
       <>
-        <Header systems={systems} selectedSystemId={selectedSystemId} onSystemChange={handleSystemChange} />
+        <Header
+          systems={systems}
+          selectedSystemId={selectedSystemId}
+          onSystemChange={handleSystemChange}
+        />
         <Grid container direction="row" spacing={2}>
-          <Grid size={12} sx={{backgroundColor: "gray", height: "90%"}} spacing={2}>
-            <EventStreamComponent systemId={selectedSystemId} />
+          <Grid size={12} sx={{backgroundColor: "var(--bg)", height: "90%"}} spacing={2}>
+            <Routes>
+              <Route path="/" element={<EventStreamComponent systemId={selectedSystemId} />} />
+              <Route path="/about" element={<About />} />
+            </Routes>
           </Grid>
         </Grid>
       </>
