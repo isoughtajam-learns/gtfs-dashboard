@@ -35,6 +35,9 @@ if ! git merge-base --is-ancestor "${TAG}^{commit}" origin/main; then
   echo "Error: $TAG is not reachable from origin/main - refusing to deploy an unmerged/unreviewed commit." >&2
   exit 1
 fi
+echo "==> Checking version.json is unique at $TAG"
+"$SCRIPT_DIR/../scripts/check-version-unique.sh" "$TAG"
+
 echo "==> Deploying frontend $TAG"
 
 cd "$SCRIPT_DIR"

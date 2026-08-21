@@ -17,7 +17,7 @@ function MenuIcon() {
 
 // Pages this menu can navigate to. Add entries here as more pages land.
 const PAGES: { path: string; label: string }[] = [
-    { path: "/", label: "Arrivals" },
+    { path: "/", label: "Live" },
     { path: "/about", label: "About" },
 ];
 
@@ -50,6 +50,10 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     };
     const menuItemSx = {
         fontFamily: "var(--font-display)",
+        // MenuItem is a flex container, so justifyContent (not textAlign)
+        // is what right-aligns the label - shared by the transit-system
+        // dropdown and the hamburger page menu.
+        justifyContent: "flex-end",
         "&:hover": { backgroundColor: "color-mix(in srgb, var(--brass) 16%, transparent)" },
         "&.Mui-selected": {
             backgroundColor: "color-mix(in srgb, var(--brass) 22%, transparent)",
@@ -72,7 +76,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     component={Link}
                     to="/"
                     aria-label="IRL Transit home"
-                    sx={{ display: "flex", alignItems: "center", flexGrow: 1, minWidth: 0, color: "inherit", textDecoration: "none" }}
+                    sx={{ display: "flex", alignItems: "center", flexShrink: 0, color: "inherit", textDecoration: "none" }}
                 >
                     <Typography
                         variant="h6"
@@ -89,6 +93,25 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                         />
                     </Typography>
                 </Box>
+                {/* Non-interactive filler - absorbs the remaining space so
+                    the link above stays sized to the title text instead of
+                    stretching (and being clickable) across the whole header. */}
+                <Box sx={{ flexGrow: 1 }} />
+                <Typography
+                    component="span"
+                    aria-label={`version ${__APP_VERSION__}`}
+                    sx={{
+                        display: { xs: "none", sm: "inline" },
+                        fontFamily: "var(--font-mono)",
+                        fontSize: "0.65625rem",
+                        letterSpacing: "0.05em",
+                        color: "var(--ink-dim)",
+                        mr: 2,
+                        flexShrink: 0,
+                    }}
+                >
+                    v{__APP_VERSION__}
+                </Typography>
                 {location.pathname === "/" && <Select
                     value={selectedSystemId}
                     onChange={handleSystemChange}

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" fill="#000"/>
+
+  <!-- cartoon speed lines trailing behind -->
+  <g stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity="0.75">
+    <line x1="2" y1="42" x2="11" y2="42"/>
+    <line x1="0" y1="54" x2="12" y2="54"/>
+    <line x1="2" y1="66" x2="11" y2="66"/>
+  </g>
+
+  <!-- bullet-train body (white) + tapered nose (blue), pointing right -->
+  <rect x="16" y="34" width="50" height="42" rx="15" fill="#fff"/>
+  <path d="M59,36 Q90,39 94,56 Q90,73 59,74 Z" fill="#2563eb"/>
+
+  <!-- accent stripe, ties the white body to the blue nose -->
+  <rect x="16" y="64" width="46" height="6" fill="#2563eb"/>
+
+  <!-- windshield -->
+  <ellipse cx="62" cy="46" rx="6.5" ry="9" fill="#16324f"/>
+
+  <!-- cabin windows -->
+  <rect x="24" y="43" width="11" height="9" rx="3" fill="#16324f"/>
+  <rect x="41" y="43" width="11" height="9" rx="3" fill="#16324f"/>
+
+  <!-- headlight -->
+  <circle cx="88" cy="57" r="4" fill="#fbbf24"/>
+
+  <!-- rail -->
+  <line x1="0" y1="80" x2="100" y2="80" stroke="#4b5563" stroke-width="2.5"/>
+</svg>
