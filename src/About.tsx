@@ -49,7 +49,7 @@ export default function About() {
                     Follow along {" "}
                     <Box component="a" href="https://github.com/users/isoughtajam-learns/projects/2/views/4" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         on Git
-                    </Box>, and {" "}
+                    </Box> and {" "}
                     <Box component="a" href="https://github.com/isoughtajam-learns" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         reach out
                     </Box> with feature requests and questions.
@@ -70,6 +70,32 @@ export default function About() {
                     <Box component="a" href="https://gautamjoshi.com" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Gautam Joshi
                     </Box> with Vite, React, MUI, and Claude.
+                </Typography>
+                <br/>
+                <Typography component="p" sx={bodySx}>
+                    <Box component="a" href="https://www.flaticon.com/free-icons/shelter" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Shelter icons
+                    </Box>  created by Magnific - Flaticon
+                    <br />
+                    <Box component="a" href="https://www.flaticon.com/free-icons/urban" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Urban icons
+                    </Box> created by Magnific - Flaticon
+                    <br />
+                    <Box component="a" href="https://www.flaticon.com/free-icons/town" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Town icons
+                    </Box> created by Magnific - Flaticon
+                    <br />
+                    <Box component="a" href="https://www.flaticon.com/free-icons/tree" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Tree icons
+                    </Box> created by Magnific - Flaticon
+                    <br />
+                    <Box component="a" href="https://www.flaticon.com/free-icons/company" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Company icons
+                    </Box> created by Magnific - Flaticon
+                    <br />
+                    <Box component="a" href="https://www.flaticon.com/free-icons/office" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Office icons
+                    </Box> created by Magnific - Flaticon
                 </Typography>
             </Box>
         </Box>
