@@ -75,7 +75,7 @@ export default function SplitFlapTitle({
             sx={{
                 display: "inline-block",
                 width: width ? `${width}px` : "auto",
-                height: "1.2em",
+                height: "1.8em",
                 perspective: "600px",
                 verticalAlign: "top",
             }}
@@ -112,6 +112,9 @@ export default function SplitFlapTitle({
                         whiteSpace: "pre",
                         fontFamily: fontFamilyA,
                         color: colorA,
+                        fontWeight: "700",
+                        fontSynthesis: "weight",
+                        fontSize: "2rem",
                     }}
                 >
                     {textA}
