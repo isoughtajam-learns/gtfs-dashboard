@@ -24,13 +24,13 @@ const titleSx = {
 
 const bodySx = {
     fontFamily: "var(--font-mono)",
-    fontSize: "0.71875rem",
+    fontSize: "0.9rem",
     color: "var(--ink)",
     lineHeight: 1.7,
 };
 
 const linkSx = {
-    color: "var(--brass)",
+    color: "var(--accent)",
 };
 
 export default function About() {

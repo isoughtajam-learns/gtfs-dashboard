@@ -32,7 +32,7 @@ const MAX_RETRY_DELAY_MS = 30_000;
 // inherited value the way plain HTML/CSS wouldn't.
 const headCellSx: SxProps<Theme> = {
     fontFamily: "var(--font-mono)",
-    fontSize: "0.65625rem", // 10.5px
+    fontSize: "0.9rem",
     letterSpacing: "0.1em",
     textTransform: "uppercase",
     fontWeight: 600,
@@ -54,7 +54,7 @@ const HEADSIGN_MUTE = 0.7;
 
 const bodyCellSx = {
     fontFamily: "var(--font-mono)",
-    fontSize: "0.71875rem",
+    fontSize: "0.9rem",
     color: "var(--ink)",
     borderColor: "var(--line)",
     minWidth: 'auto',
@@ -197,24 +197,26 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                         >
                             <TableCell component="th" scope="row" sx={bodyCellSx}>
                                 { message.trip_headsign != null && (
-                                    <Box
-                                        component="span"
-                                        sx={{
-                                            display: "inline-block",
-                                            px: 1,
-                                            py: 0.25,
-                                            borderRadius: "6px",
-                                            fontWeight: 700,
-                                            whiteSpace: "nowrap",
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                            backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--brass)")} ${HEADSIGN_MUTE * 100}%, var(--panel))`,
-                                            color: toCssColor(message.text_color, "#fff"),
-                                            maxWidth: "100%",
-                                        }}
-                                    >
-                                        { message.trip_headsign }
-                                    </Box>
+                                    <Tooltip title={message.trip_headsign}>
+                                        <Box
+                                            component="span"
+                                            sx={{
+                                                display: "inline-block",
+                                                px: 1,
+                                                py: 0.25,
+                                                borderRadius: "6px",
+                                                fontWeight: 700,
+                                                whiteSpace: "nowrap",
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--accent)")} ${HEADSIGN_MUTE * 100}%, var(--panel))`,
+                                                color: toCssColor(message.text_color, "#fff"),
+                                                maxWidth: "100%",
+                                            }}
+                                        >
+                                            { message.trip_headsign }
+                                        </Box>
+                                    </Tooltip>
                                 )}
                             </TableCell>
                             <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>

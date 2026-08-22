@@ -102,7 +102,17 @@ export default function SplitFlapTitle({
                 <Box
                     component="span"
                     aria-hidden="true"
-                    sx={{ position: "absolute", inset: 0, backfaceVisibility: "hidden", whiteSpace: "pre", fontFamily: fontFamilyA, color: colorA }}
+                    sx={{
+                        position: "absolute",
+                        inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        backfaceVisibility: "hidden",
+                        whiteSpace: "pre",
+                        fontFamily: fontFamilyA,
+                        color: colorA,
+                    }}
                 >
                     {textA}
                 </Box>
@@ -112,11 +122,15 @@ export default function SplitFlapTitle({
                     sx={{
                         position: "absolute",
                         inset: 0,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
                         backfaceVisibility: "hidden",
                         transform: "rotateX(180deg)",
                         whiteSpace: "pre",
                         fontFamily: fontFamilyB,
                         color: colorB,
+                        fontSize: "0.875rem",
                     }}
                 >
                     {textB}

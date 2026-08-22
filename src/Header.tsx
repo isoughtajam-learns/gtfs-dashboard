@@ -54,10 +54,10 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
         // is what right-aligns the label - shared by the transit-system
         // dropdown and the hamburger page menu.
         justifyContent: "flex-end",
-        "&:hover": { backgroundColor: "color-mix(in srgb, var(--brass) 16%, transparent)" },
+        "&:hover": { backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)" },
         "&.Mui-selected": {
-            backgroundColor: "color-mix(in srgb, var(--brass) 22%, transparent)",
-            "&:hover": { backgroundColor: "color-mix(in srgb, var(--brass) 28%, transparent)" },
+            backgroundColor: "color-mix(in srgb, var(--accent) 22%, transparent)",
+            "&:hover": { backgroundColor: "color-mix(in srgb, var(--accent) 28%, transparent)" },
         },
     };
 
@@ -85,10 +85,10 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     >
                         <SplitFlapTitle
                             textA="IRL Transit"
-                            textB="[real-time transit info]"
+                            textB={"v" + __APP_VERSION__}
                             fontFamilyA="var(--font-display)"
-                            fontFamilyB="var(--font-body)"
-                            colorA="var(--brass)"
+                            fontFamilyB="var(--font-mono)"
+                            colorA="var(--accent)"
                             colorB="var(--ink-dim)"
                         />
                     </Typography>
@@ -97,21 +97,6 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     the link above stays sized to the title text instead of
                     stretching (and being clickable) across the whole header. */}
                 <Box sx={{ flexGrow: 1 }} />
-                <Typography
-                    component="span"
-                    aria-label={`version ${__APP_VERSION__}`}
-                    sx={{
-                        display: { xs: "none", sm: "inline" },
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "0.65625rem",
-                        letterSpacing: "0.05em",
-                        color: "var(--ink-dim)",
-                        mr: 2,
-                        flexShrink: 0,
-                    }}
-                >
-                    v{__APP_VERSION__}
-                </Typography>
                 {location.pathname === "/" && <Select
                     value={selectedSystemId}
                     onChange={handleSystemChange}
@@ -137,7 +122,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                         alignItems: "center",
                         backgroundColor: "color-mix(in srgb, var(--ink-dim) 20%, transparent)",
                         borderRadius: "20px",
-                        "& .MuiSelect-icon": { color: "var(--brass)", position: "static", marginRight: "10px" },
+                        "& .MuiSelect-icon": { color: "var(--accent)", position: "static", marginRight: "10px" },
                         "& .MuiSelect-select": {
                             textAlign: "left",
                             overflow: "hidden",
@@ -163,7 +148,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     aria-haspopup="true"
                     aria-expanded={menuOpen ? "true" : undefined}
                     onClick={handleMenuOpen}
-                    sx={{ color: "var(--brass)" }}
+                    sx={{ color: "var(--accent)" }}
                 >
                     <MenuIcon />
                 </IconButton>
