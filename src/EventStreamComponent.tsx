@@ -3,6 +3,7 @@ import type { MouseEvent } from 'react';
 import {Box, Checkbox, Divider, IconButton, ListItemText, Menu, MenuItem, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
+import TripDetailCard from "./TripDetailCard.tsx";
 
 type TripUpdate = {
     trip_id: string;
@@ -17,8 +18,10 @@ type TripUpdate = {
     text_color?: string | null;
 };
 
-// `seq` is client-assigned at insert time: the same trip reappears as it progresses,
-// so nothing in the payload is unique across the rolling window.
+// `seq` is client-assigned at insert/update time, since nothing in the raw
+// payload is otherwise guaranteed unique - it doubles as the row's React key,
+// so bumping it on every update (not just on first insert) re-triggers the
+// row's mount animation even when the row itself isn't moving.
 type StreamedUpdate = TripUpdate & { seq: number };
 
 // The server names every event, so `onmessage` (unnamed events only) never fires.
@@ -36,8 +39,8 @@ const headCellSx: SxProps<Theme> = {
     letterSpacing: "0.1em",
     textTransform: "uppercase",
     fontWeight: 600,
-    color: "var(--ink-dim)",
-    borderColor: "var(--line)",
+    color: "var(--ink-secondary)",
+    borderColor: "var(--hairline)",
 };
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
@@ -74,8 +77,8 @@ function FilterIcon() {
 }
 
 const menuPaperSx = {
-    backgroundColor: "var(--bg-elev)",
-    border: "1px solid var(--line)",
+    backgroundColor: "var(--surface-raised)",
+    border: "1px solid var(--hairline)",
     borderRadius: "var(--radius)",
     color: "var(--ink)",
     maxHeight: 360,
@@ -85,13 +88,13 @@ const menuItemSx = {
     fontSize: "0.85rem",
     justifyContent: "flex-start",
     minHeight: "auto",
-    "&:hover": { backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)" },
+    "&:hover": { backgroundColor: "color-mix(in srgb, var(--coral) 16%, transparent)" },
 };
 const checkboxItemSx = { ...menuItemSx, py: 0.25, pl: 0.5 };
 const checkboxSx = {
-    color: "var(--ink-dim)",
+    color: "var(--ink-secondary)",
     p: 0.5,
-    "&.Mui-checked": { color: "var(--accent)" },
+    "&.Mui-checked": { color: "var(--coral)" },
 };
 
 const HEADSIGN_MUTE = 0.7;
@@ -100,7 +103,7 @@ const bodyCellSx = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.9rem",
     color: "var(--ink)",
-    borderColor: "var(--line)",
+    borderColor: "var(--hairline)",
     minWidth: 'auto',
     // Belt-and-suspenders alongside the headsign chip's own maxWidth/ellipsis:
     // some browsers resolve a percentage-based maxWidth on a descendant
@@ -142,6 +145,9 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
         stop_name: new Set(),
     });
     const [headerMenu, setHeaderMenu] = useState<{ anchorEl: HTMLElement; field: SortField } | null>(null);
+
+    // Which trip's detail card is open, if any - set by clicking a row.
+    const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
     // Distinct values currently in the buffer, for the filter checklists.
     // Recomputed as messages stream in/age out, so the checklist always
@@ -220,7 +226,20 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                 try {
                     const newEventData: TripUpdate = JSON.parse(event.data);
                     const row: StreamedUpdate = { ...newEventData, seq: seqRef.current++ };
-                    setMessages((prev) => [row, ...prev.slice(0, MAX_MESSAGES - 1)]);
+                    setMessages((prev) => {
+                        // The backend re-emits every active trip on every poll (not just
+                        // the ones that changed), so the same trip_id shows up repeatedly
+                        // over time - update that trip's existing row in place (a fresh
+                        // seq still re-triggers its mount animation) rather than piling up
+                        // duplicate rows for the same trip.
+                        const existingIndex = prev.findIndex((m) => m.trip_id === row.trip_id);
+                        if (existingIndex !== -1) {
+                            const next = [...prev];
+                            next[existingIndex] = row;
+                            return next;
+                        }
+                        return [row, ...prev.slice(0, MAX_MESSAGES - 1)];
+                    });
                 } catch {
                     console.error("Malformed SSE payload:", event.data);
                 }
@@ -251,12 +270,13 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
     }, [systemId]);
 
     return (
+        <>
         <TableContainer
             component={Paper}
             sx={{
                 fontFamily: "var(--font-body)",
-                backgroundColor: "var(--panel)",
-                border: "1px solid var(--line)",
+                backgroundColor: "var(--surface)",
+                border: "1px solid var(--hairline)",
                 borderRadius: "var(--radius)",
                 boxShadow: "none",
             }}
@@ -270,8 +290,8 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                         fontWeight: 600,
                         px: 2,
                         py: 0.5,
-                        backgroundColor: "color-mix(in srgb, var(--rust) 22%, transparent)",
-                        color: "var(--rust)",
+                        backgroundColor: "color-mix(in srgb, var(--coral-ink) 22%, transparent)",
+                        color: "var(--coral-ink)",
                     }}
                 >
                     Reconnecting&hellip; arrival times may be stale.
@@ -287,7 +307,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                 onClick={openHeaderMenu("trip_headsign")}
                                 aria-label="Sort or filter Line column"
                                 sx={{
-                                    color: (sort?.field === "trip_headsign" || excludedValues.trip_headsign.size > 0) ? "var(--accent)" : "inherit",
+                                    color: (sort?.field === "trip_headsign" || excludedValues.trip_headsign.size > 0) ? "var(--coral)" : "inherit",
                                     p: 0.25,
                                     ml: 0.5,
                                     verticalAlign: "middle",
@@ -303,7 +323,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                 onClick={openHeaderMenu("stop_name")}
                                 aria-label="Sort or filter Station column"
                                 sx={{
-                                    color: (sort?.field === "stop_name" || excludedValues.stop_name.size > 0) ? "var(--accent)" : "inherit",
+                                    color: (sort?.field === "stop_name" || excludedValues.stop_name.size > 0) ? "var(--coral)" : "inherit",
                                     p: 0.25,
                                     ml: 0.5,
                                     verticalAlign: "middle",
@@ -321,7 +341,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                 onClick={openHeaderMenu("next")}
                                 aria-label="Sort Next column"
                                 sx={{
-                                    color: sort?.field === "next" ? "var(--accent)" : "inherit",
+                                    color: sort?.field === "next" ? "var(--coral)" : "inherit",
                                     p: 0.25,
                                     ml: 0.5,
                                     verticalAlign: "middle",
@@ -336,11 +356,13 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                     {visibleMessages.map((message) => (
                         <TableRow
                             key={ message.seq }
+                            onClick={() => setSelectedTripId(message.trip_id)}
                             sx={{
                                 animation: `${flapIn} 180ms ease-out`,
                                 transformOrigin: "top",
-                                // No zebra striping (Bahnhof spec: row borders only).
-                                '&:hover': { backgroundColor: "var(--bg-elev)" },
+                                cursor: "pointer",
+                                // No zebra striping - row borders only.
+                                '&:hover': { backgroundColor: "var(--surface-raised)" },
                                 '&:last-child td, &:last-child th': { border: 0 },
                             }}
                         >
@@ -358,7 +380,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                                 whiteSpace: "nowrap",
                                                 overflow: "hidden",
                                                 textOverflow: "ellipsis",
-                                                backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--accent)")} ${HEADSIGN_MUTE * 100}%, var(--panel))`,
+                                                backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--coral)")} ${HEADSIGN_MUTE * 100}%, var(--surface))`,
                                                 color: toCssColor(message.text_color, "#fff"),
                                                 maxWidth: "100%",
                                             }}
@@ -381,8 +403,8 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                         px: 1,
                                         py: 0.375,
                                         borderRadius: "20px",
-                                        backgroundColor: "color-mix(in srgb, var(--ink-dim) 20%, transparent)",
-                                        color: "var(--ink-dim)",
+                                        backgroundColor: "color-mix(in srgb, var(--ink-secondary) 20%, transparent)",
+                                        color: "var(--ink-secondary)",
                                     }}
                                 >
                                     { message.status }
@@ -415,7 +437,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                         : []),
                     ...(isFilterField(headerMenu.field)
                         ? [
-                            <Divider key="divider" sx={{ borderColor: "var(--line)", my: 0.5 }} />,
+                            <Divider key="divider" sx={{ borderColor: "var(--hairline)", my: 0.5 }} />,
                             <MenuItem key="select-all" onClick={() => selectAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
                                 Select All
                             </MenuItem>,
@@ -443,5 +465,11 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                 ]}
             </Menu>
         </TableContainer>
+        <TripDetailCard
+            systemId={systemId}
+            tripId={selectedTripId}
+            onClose={() => setSelectedTripId(null)}
+        />
+        </>
     )
 }

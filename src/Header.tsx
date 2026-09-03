@@ -15,6 +15,30 @@ function MenuIcon() {
     );
 }
 
+// Icon reflects the mode currently active (clicking switches to the other).
+function SunIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <circle cx="10" cy="10" r="4" stroke="currentColor" strokeWidth="1.6" />
+            <path
+                d="M10 1v2M10 17v2M1 10h2M17 10h2M3.5 3.5l1.4 1.4M15.1 15.1l1.4 1.4M3.5 16.5l1.4-1.4M15.1 4.9l1.4-1.4"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+            />
+        </svg>
+    );
+}
+function MoonIcon() {
+    return (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M17 12.5A7.5 7.5 0 1 1 7.5 3a6 6 0 0 0 9.5 9.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        </svg>
+    );
+}
+
+const THEME_STORAGE_KEY = "theme";
+
 // Pages this menu can navigate to. Add entries here as more pages land.
 const PAGES: { path: string; label: string }[] = [
     { path: "/", label: "Live" },
@@ -33,17 +57,34 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     const location = useLocation();
     const navigate = useNavigate();
 
+    // main.tsx already resolved and set this (from a saved override or
+    // prefers-color-scheme) before first paint - read it back as the
+    // toggle's initial state rather than re-deriving it here.
+    const [themeMode, setThemeMode] = useState<"light" | "dark">(
+        () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light")
+    );
+
     const handleMenuOpen = (event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
     const handleMenuClose = () => setAnchorEl(null);
 
     const handleSystemChange = (event: SelectChangeEvent) => onSystemChange(event.target.value);
 
-    // Bahnhof design system (bahnhof-design-spec.md) - a raised surface
-    // (--bg-elev) with a hairline divider, matching the flat, square-cornered
-    // treatment used everywhere else (no elevation shadow).
+    const toggleTheme = () => {
+        const next = themeMode === "dark" ? "light" : "dark";
+        setThemeMode(next);
+        document.documentElement.dataset.theme = next;
+        try {
+            localStorage.setItem(THEME_STORAGE_KEY, next);
+        } catch {
+            // Toggle still works for the rest of this session.
+        }
+    };
+
+    // --surface-raised with a hairline divider, no elevation shadow -
+    // matches the flat treatment used everywhere else.
     const menuPaperSx = {
-        backgroundColor: "var(--bg-elev)",
-        border: "1px solid var(--line)",
+        backgroundColor: "var(--surface-raised)",
+        border: "1px solid var(--hairline)",
         borderRadius: "var(--radius)",
         color: "var(--ink)",
         fontFamily: "var(--font-display)",
@@ -54,10 +95,10 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
         // is what right-aligns the label - shared by the transit-system
         // dropdown and the hamburger page menu.
         justifyContent: "flex-end",
-        "&:hover": { backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)" },
+        "&:hover": { backgroundColor: "color-mix(in srgb, var(--coral) 16%, transparent)" },
         "&.Mui-selected": {
-            backgroundColor: "color-mix(in srgb, var(--accent) 22%, transparent)",
-            "&:hover": { backgroundColor: "color-mix(in srgb, var(--accent) 28%, transparent)" },
+            backgroundColor: "color-mix(in srgb, var(--coral) 22%, transparent)",
+            "&:hover": { backgroundColor: "color-mix(in srgb, var(--coral) 28%, transparent)" },
         },
     };
 
@@ -66,8 +107,8 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
             position="static"
             elevation={0}
             sx={{
-                backgroundColor: "var(--bg-elev)",
-                borderBottom: "1px solid var(--line)",
+                backgroundColor: "var(--surface-raised)",
+                borderBottom: "1px solid var(--hairline)",
                 color: "var(--ink)",
             }}
         >
@@ -88,8 +129,8 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                             textB={"v" + __APP_VERSION__}
                             fontFamilyA="var(--font-display)"
                             fontFamilyB="var(--font-mono)"
-                            colorA="var(--accent)"
-                            colorB="var(--ink-dim)"
+                            colorA="var(--coral)"
+                            colorB="var(--ink-secondary)"
                         />
                     </Typography>
                 </Box>
@@ -120,9 +161,9 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                         // text and centers on the row via alignItems.
                         display: "inline-flex",
                         alignItems: "center",
-                        backgroundColor: "color-mix(in srgb, var(--ink-dim) 20%, transparent)",
+                        backgroundColor: "color-mix(in srgb, var(--ink-secondary) 20%, transparent)",
                         borderRadius: "20px",
-                        "& .MuiSelect-icon": { color: "var(--accent)", position: "static", marginRight: "10px" },
+                        "& .MuiSelect-icon": { color: "var(--coral)", position: "static", marginRight: "10px" },
                         "& .MuiSelect-select": {
                             textAlign: "left",
                             overflow: "hidden",
@@ -141,6 +182,13 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     ))}
                 </Select>}
                 <IconButton
+                    onClick={toggleTheme}
+                    aria-label={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                    sx={{ color: "var(--coral)" }}
+                >
+                    { themeMode === "dark" ? <MoonIcon /> : <SunIcon /> }
+                </IconButton>
+                <IconButton
                     size="large"
                     edge="end"
                     aria-label="page menu"
@@ -148,7 +196,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     aria-haspopup="true"
                     aria-expanded={menuOpen ? "true" : undefined}
                     onClick={handleMenuOpen}
-                    sx={{ color: "var(--accent)" }}
+                    sx={{ color: "var(--coral)" }}
                 >
                     <MenuIcon />
                 </IconButton>

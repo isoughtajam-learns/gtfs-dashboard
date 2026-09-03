@@ -1,38 +1,62 @@
-/* "Bahnhof" design system — see bahnhof-design-spec.md at the repo root.
-   Self-hosted fonts (matching this project's existing convention for WU3/
-   Noto Sans) rather than the spec's Google Fonts @import, so the app doesn't
-   depend on Google's CDN being reachable at runtime. */
-
-@font-face {
-  font-family: "Noto Sans";
-  src: local('Noto Sans'), local('NotoSans-Regular'), url('../assets/NotoSans-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
+/* IRL Transit color & type system — see prompts/irl-transit-color-scheme.md
+   in the gtfs-realtime repo. Light is the default palette; [data-theme="dark"]
+   (set by main.tsx before first paint, from prefers-color-scheme or a saved
+   override) supplies the dark overrides. Fredoka/Inter self-hosted via
+   @fontsource (imported in main.tsx) rather than the spec's Google Fonts
+   @import, matching this project's existing no-CDN-at-runtime convention. */
 
 :root {
-  --bg:          #0a0a0a;  /* app background */
-  --bg-elev:     #262626;  /* raised surfaces, map background */
-  --panel:       #1c1c1c;  /* cards, table containers */
-  --line:        #3a3a3a;  /* borders, dividers, gridlines */
+  --bg:              #F5F7F1;  /* app background */
+  --surface:         #FFFFFF;  /* cards, table containers */
+  --surface-raised:  #FFFFFF;  /* header, dialogs, hover highlight */
+  --hairline:        #E4E7DE;  /* borders, dividers, gridlines */
 
-  --ink:         #e8e8e8;  /* primary text */
-  --ink-dim:     #9a9a9a;  /* secondary text, labels, captions */
+  --ink:            #16241C;  /* primary text */
+  --ink-secondary:  #5B6B60;  /* secondary text, labels, captions */
+  --ink-muted:      #8B978C;  /* tertiary/meta text */
 
-  /* Accent pair drawn from BART's own route colors rather than an
-     invented brand color, since BART is one of the systems this app
-     actually tracks. Blue (their signature line) as the primary accent,
-     orange as the hover/active variant for contrast. */
-  --accent:        #0072ce;  /* primary accent — links, active states, icons */
-  --accent-bright: #f7941d;  /* hover/active variant of accent */
+  /* Coral carries everything decorative/functional that isn't a line color:
+     live pulse, primary emphasis, delay states. */
+  --coral:       #FF5A4E;  /* primary accent — links, active states, icons */
+  --coral-ink:   #B23226;  /* delay/error state text */
+  --coral-tint:  #FFE7E3;  /* soft coral background fill */
 
-  --ok:          #7c9a6a;  /* on-time / success status */
-  --rust:        #a3492f;  /* delayed / cancelled / error status */
+  /* Reserved as functional line colors (they mean "which route/system") -
+     don't reuse decoratively. Not yet wired to real per-route colors from
+     the feed (that's message.color/text_color, unrelated to these tokens);
+     available here for line-badge-style UI. */
+  --line-green:       #2FAE66;
+  --line-green-tint:  #E3F5EA;
+  --line-yellow:      #E8940C;
+  --line-yellow-tint: #FCEFD9;
+  --line-blue:        #2F8FE0;
+  --line-blue-tint:   #E4F1FC;
 
-  --radius: 2px;  /* almost square — this theme does NOT use rounded corners */
+  --radius: 12px;  /* clean and fun - rounded, not square */
 
-  --font-display: 'Noto Sans', system-ui, sans-serif;
-  --font-body: 'Noto Sans', system-ui, sans-serif;
-  --font-mono: 'Courier New', monospace;
+  --font-display: 'Fredoka', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Courier New', monospace;  /* dense tabular data (times, ids) - outside the spec, kept as-is */
+}
+
+[data-theme="dark"] {
+  --bg:              #10201A;
+  --surface:         #17281F;
+  --surface-raised:  #1D3226;
+  --hairline:        #24392C;
+
+  --ink:            #EDF3EC;
+  --ink-secondary:  #A9BBAE;
+  --ink-muted:      #74897B;
+
+  --coral:       #FF7A63;
+  --coral-ink:   #FFD9CF;
+  --coral-tint:  #33261F;
+
+  --line-green:       #4BC685;
+  --line-green-tint:  #1D3327;
+  --line-yellow:      #F5B93E;
+  --line-yellow-tint: #362D18;
+  --line-blue:        #5CACEF;
+  --line-blue-tint:   #1B2E3F;
 }
