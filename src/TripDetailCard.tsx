@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Box, Dialog, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
+import { Box, Dialog, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
 import { keyframes } from "@emotion/react";
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
@@ -77,12 +77,14 @@ const stopHeadCellSx = {
     fontWeight: 600,
     color: "var(--ink-secondary)",
     borderColor: "var(--hairline)",
+    whiteSpace: "nowrap" as const,
 };
 const stopBodyCellSx = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.85rem",
     color: "var(--ink)",
     borderColor: "var(--hairline)",
+    whiteSpace: "nowrap" as const,
 };
 
 // Attention cue for the next stop's name/arrival: pulses the text color
@@ -180,6 +182,7 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
             <Box
                 sx={{
                     display: "flex",
+                    flexWrap: "wrap",
                     alignItems: "flex-start",
                     justifyContent: "space-between",
                     gap: 2,
@@ -189,30 +192,37 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                     flexShrink: 0,
                 }}
             >
-                <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.5rem", textAlign: "left" }}>
+                <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.5rem", textAlign: "left", minWidth: 0 }}>
                     { detail?.trip_headsign ?? `Trip ${tripId}` }
                 </Typography>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexShrink: 0 }}>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexShrink: 0, maxWidth: "100%" }}>
                     { detail?.route_long_name && (
-                        <Box
-                            component={ detail.route_url ? "a" : "span" }
-                            href={ detail.route_url ?? undefined }
-                            target={ detail.route_url ? "_blank" : undefined }
-                            rel={ detail.route_url ? "noopener noreferrer" : undefined }
-                            sx={{
-                                fontFamily: "var(--font-body)",
-                                fontWeight: 700,
-                                fontSize: "0.85rem",
-                                textDecoration: "none",
-                                px: 1,
-                                py: 0.375,
-                                borderRadius: "6px",
-                                backgroundColor: toCssColor(detail.route_color, "var(--coral)"),
-                                color: toCssColor(detail.route_text_color, "#fff"),
-                            }}
-                        >
-                            { detail.route_long_name }
-                        </Box>
+                        <Tooltip title={detail.route_long_name}>
+                            <Box
+                                component={ detail.route_url ? "a" : "span" }
+                                href={ detail.route_url ?? undefined }
+                                target={ detail.route_url ? "_blank" : undefined }
+                                rel={ detail.route_url ? "noopener noreferrer" : undefined }
+                                sx={{
+                                    display: "inline-block",
+                                    fontFamily: "var(--font-body)",
+                                    fontWeight: 700,
+                                    fontSize: "0.85rem",
+                                    textDecoration: "none",
+                                    px: 1,
+                                    py: 0.375,
+                                    borderRadius: "6px",
+                                    backgroundColor: toCssColor(detail.route_color, "var(--coral)"),
+                                    color: toCssColor(detail.route_text_color, "#fff"),
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    maxWidth: { xs: "50vw", sm: "30vw" },
+                                }}
+                            >
+                                { detail.route_long_name }
+                            </Box>
+                        </Tooltip>
                     )}
                     <IconButton onClick={onClose} aria-label="Close trip detail" sx={{ color: "var(--coral)" }}>
                         <CloseIcon />
@@ -232,7 +242,7 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                 )}
                 {detail && (
                     <TableContainer sx={{ border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
-                        <Table size="small">
+                        <Table size="small" sx={{ minWidth: 560 }}>
                             <TableHead>
                                 <TableRow>
                                     <TableCell sx={stopHeadCellSx}>Stop</TableCell>
@@ -247,7 +257,16 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                     const isNext = index === nextStopIndex;
                                     const isDelayed = stop.arrival_delay != null && stop.arrival_delay > 0;
                                     return (
-                                        <TableRow key={`${stop.stop_id}-${index}`} sx={{ '&:hover': { backgroundColor: "var(--surface-raised)" } }}>
+                                        <TableRow
+                                            key={`${stop.stop_id}-${index}`}
+                                            sx={[
+                                                { '&:hover': { backgroundColor: "var(--surface-raised)" } },
+                                                // --coral-tint, not --coral itself, so the row highlight
+                                                // never lands on the same hue/lightness as the blinking
+                                                // text pulsing through it.
+                                                isNext ? { backgroundColor: "var(--coral-tint)" } : {},
+                                            ]}
+                                        >
                                             <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ stop.stop_name ?? stop.stop_id }</TableCell>
                                             <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatEpochSeconds(stop.arrival_time) }</TableCell>
                                             <TableCell sx={isNext && isDelayed ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatDelay(stop.arrival_delay) }</TableCell>
