@@ -15,7 +15,7 @@ function MenuIcon() {
     );
 }
 
-// Icon reflects the mode currently active (clicking switches to the other).
+// Rendered by destination mode, not current mode - see the toggle button below.
 function SunIcon() {
     return (
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -186,7 +186,9 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     aria-label={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
                     sx={{ color: "var(--coral)" }}
                 >
-                    { themeMode === "dark" ? <MoonIcon /> : <SunIcon /> }
+                    {/* Icon shows the destination (what clicking switches to),
+                        matching the aria-label above - not the current mode. */}
+                    { themeMode === "dark" ? <SunIcon /> : <MoonIcon /> }
                 </IconButton>
                 <IconButton
                     size="large"

@@ -93,6 +93,12 @@ const stopHeadCellSx = {
     borderColor: "var(--hairline)",
     whiteSpace: "nowrap" as const,
 };
+// Zebra striping for legibility across a long stop list. A color-mix off
+// --surface (rather than a fixed color) so it stays visible in both themes
+// without needing separate light/dark values - --surface and --surface-raised
+// are identical in light mode, so reusing either of those wouldn't alternate.
+const stopStripeSx = { backgroundColor: "color-mix(in srgb, var(--ink) 4%, var(--surface))" };
+
 const stopBodyCellSx = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.85rem",
@@ -195,6 +201,7 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
         >
             <Box
                 sx={{
+                    position: "relative",
                     display: "flex",
                     flexWrap: "wrap",
                     alignItems: "flex-start",
@@ -202,6 +209,10 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                     gap: 2,
                     px: 2,
                     py: 1.5,
+                    // Room for the close button, pinned absolutely on xs so
+                    // it never gets swept into the title/badge's own wrap
+                    // flow (see the IconButton's sx below).
+                    pr: { xs: 6, sm: 2 },
                     borderBottom: "1px solid var(--hairline)",
                     flexShrink: 0,
                 }}
@@ -231,14 +242,31 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                     whiteSpace: "nowrap",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
-                                    maxWidth: { xs: "50vw", sm: "30vw" },
+                                    // xs: the close button no longer shares this row (it's
+                                    // pinned absolutely), so the badge can use nearly all of
+                                    // the header's own content width - dialog width (88vw)
+                                    // minus its left padding (16px) and the reserved right
+                                    // padding for the button (48px).
+                                    maxWidth: { xs: "calc(88vw - 64px)", sm: "30vw" },
                                 }}
                             >
                                 { detail.route_long_name }
                             </Box>
                         </Tooltip>
                     )}
-                    <IconButton onClick={onClose} aria-label="Close trip detail" sx={{ color: "var(--coral)" }}>
+                    {/* Static (inline, next to the badge) on sm+; pinned to
+                        the header's actual top-right corner on xs so it
+                        stays put regardless of how the title/badge wrap. */}
+                    <IconButton
+                        onClick={onClose}
+                        aria-label="Close trip detail"
+                        sx={{
+                            color: "var(--coral)",
+                            position: { xs: "absolute", sm: "static" },
+                            top: { xs: 8, sm: "auto" },
+                            right: { xs: 8, sm: "auto" },
+                        }}
+                    >
                         <CloseIcon />
                     </IconButton>
                 </Box>
@@ -266,9 +294,9 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                     <TableRow>
                                         <TableCell sx={stopHeadCellSx}>Stop</TableCell>
                                         <TableCell sx={stopHeadCellSx}>Arrival</TableCell>
-                                        <TableCell sx={stopHeadCellSx}>Arrival delayed by</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Arrival delay</TableCell>
                                         <TableCell sx={stopHeadCellSx}>Departure</TableCell>
-                                        <TableCell sx={stopHeadCellSx}>Departure delayed by</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Departure delay</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -280,9 +308,11 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                                 key={`${stop.stop_id}-${index}`}
                                                 sx={[
                                                     { '&:hover': { backgroundColor: "var(--surface-raised)" } },
+                                                    index % 2 === 1 ? stopStripeSx : {},
                                                     // --coral-tint, not --coral itself, so the row highlight
                                                     // never lands on the same hue/lightness as the blinking
-                                                    // text pulsing through it.
+                                                    // text pulsing through it. Listed last so it always wins
+                                                    // over the zebra stripe above.
                                                     isNext ? { backgroundColor: "var(--coral-tint)" } : {},
                                                 ]}
                                             >
@@ -312,6 +342,8 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                                 borderBottom: "1px solid var(--hairline)",
                                                 '&:last-of-type': { borderBottom: 0 },
                                             },
+                                            index % 2 === 1 ? stopStripeSx : {},
+                                            // Listed last so it always wins over the zebra stripe above.
                                             isNext ? { backgroundColor: "var(--coral-tint)" } : {},
                                         ]}
                                     >
@@ -326,7 +358,7 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                                 </Box>
                                             </Box>
                                             <Box sx={{ textAlign: "right" }}>
-                                                <Box sx={stopFieldLabelSx}>Arrival delayed by</Box>
+                                                <Box sx={stopFieldLabelSx}>Arrival delay</Box>
                                                 <Box sx={isNext && isDelayed ? [stopFieldValueSx, blinkSx] : stopFieldValueSx}>
                                                     { formatDelay(stop.arrival_delay) }
                                                 </Box>
@@ -338,7 +370,7 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                                 <Box sx={stopFieldValueSx}>{ formatEpochSeconds(stop.departure_time) }</Box>
                                             </Box>
                                             <Box sx={{ textAlign: "right" }}>
-                                                <Box sx={stopFieldLabelSx}>Departure delayed by</Box>
+                                                <Box sx={stopFieldLabelSx}>Departure delay</Box>
                                                 <Box sx={stopFieldValueSx}>{ formatDelay(stop.departure_delay) }</Box>
                                             </Box>
                                         </Box>
