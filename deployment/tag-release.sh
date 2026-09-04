@@ -37,7 +37,35 @@ case "$BUMP" in
   minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
   major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
 esac
-NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+GENERATED_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+# version.json at origin/main HEAD (the same ref being tagged) must already
+# reflect at least this bump - otherwise check-version-unique.sh would just
+# block the deploy of whatever this tag builds anyway, so catch it here
+# instead of at deploy time.
+JSON_VERSION="$(git show "$MAIN_SHA:version.json" | node -pe "JSON.parse(require('fs').readFileSync(0,'utf-8')).version")"
+JSON_VERSION="${JSON_VERSION#v}"
+
+# True if $1 >= $2, both "MAJOR.MINOR.PATCH" - plain string/lexicographic
+# comparison breaks on e.g. "0.3.10" vs "0.3.9", so compare numerically.
+version_ge() {
+  local a_major a_minor a_patch b_major b_minor b_patch
+  IFS='.' read -r a_major a_minor a_patch <<< "$1"
+  IFS='.' read -r b_major b_minor b_patch <<< "$2"
+  [ "$a_major" -gt "$b_major" ] && return 0
+  [ "$a_major" -lt "$b_major" ] && return 1
+  [ "$a_minor" -gt "$b_minor" ] && return 0
+  [ "$a_minor" -lt "$b_minor" ] && return 1
+  [ "$a_patch" -ge "$b_patch" ]
+}
+
+if version_ge "$JSON_VERSION" "$GENERATED_VERSION"; then
+  NEW_TAG="v${JSON_VERSION}"
+else
+  echo "Update version.json" >&2
+  echo "version.json is at $JSON_VERSION (at origin/main), but the next $BUMP release is $GENERATED_VERSION." >&2
+  exit 1
+fi
 
 if git rev-parse "$NEW_TAG" >/dev/null 2>&1; then
   echo "Error: tag $NEW_TAG already exists." >&2
@@ -46,6 +74,7 @@ fi
 
 echo "Latest tag:      $LATEST_TAG"
 echo "origin/main HEAD: $MAIN_SHA ($MAIN_SUBJECT)"
+echo "version.json:     $JSON_VERSION"
 echo "Bump:             $BUMP"
 echo "New tag:          $NEW_TAG"
 echo

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
-import {Box, Checkbox, Divider, IconButton, ListItemText, Menu, MenuItem, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
+import type { MouseEvent, ReactElement } from 'react';
+import {Box, Checkbox, Divider, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
+import TripDetailCard from "./TripDetailCard.tsx";
 
 type TripUpdate = {
     trip_id: string;
@@ -17,8 +18,10 @@ type TripUpdate = {
     text_color?: string | null;
 };
 
-// `seq` is client-assigned at insert time: the same trip reappears as it progresses,
-// so nothing in the payload is unique across the rolling window.
+// `seq` is client-assigned at insert/update time, since nothing in the raw
+// payload is otherwise guaranteed unique - it doubles as the row's React key,
+// so bumping it on every update (not just on first insert) re-triggers the
+// row's mount animation even when the row itself isn't moving.
 type StreamedUpdate = TripUpdate & { seq: number };
 
 // The server names every event, so `onmessage` (unnamed events only) never fires.
@@ -36,8 +39,8 @@ const headCellSx: SxProps<Theme> = {
     letterSpacing: "0.1em",
     textTransform: "uppercase",
     fontWeight: 600,
-    color: "var(--ink-dim)",
-    borderColor: "var(--line)",
+    color: "var(--ink-secondary)",
+    borderColor: "var(--hairline)",
 };
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
@@ -54,6 +57,11 @@ type FilterField = "trip_headsign" | "stop_name";
 type SortDirection = "asc" | "desc";
 const isFilterField = (field: SortField): field is FilterField =>
     field === "trip_headsign" || field === "stop_name";
+const COLUMN_LABELS: Record<SortField, string> = {
+    trip_headsign: "Line",
+    stop_name: "Station",
+    next: "Next",
+};
 
 // GTFS trip_headsign is nullable (see the Line cell's own null check below);
 // group those rows under one filterable bucket rather than dropping them.
@@ -74,8 +82,8 @@ function FilterIcon() {
 }
 
 const menuPaperSx = {
-    backgroundColor: "var(--bg-elev)",
-    border: "1px solid var(--line)",
+    backgroundColor: "var(--surface-raised)",
+    border: "1px solid var(--hairline)",
     borderRadius: "var(--radius)",
     color: "var(--ink)",
     maxHeight: 360,
@@ -85,13 +93,13 @@ const menuItemSx = {
     fontSize: "0.85rem",
     justifyContent: "flex-start",
     minHeight: "auto",
-    "&:hover": { backgroundColor: "color-mix(in srgb, var(--accent) 16%, transparent)" },
+    "&:hover": { backgroundColor: "color-mix(in srgb, var(--coral) 16%, transparent)" },
 };
 const checkboxItemSx = { ...menuItemSx, py: 0.25, pl: 0.5 };
 const checkboxSx = {
-    color: "var(--ink-dim)",
+    color: "var(--ink-secondary)",
     p: 0.5,
-    "&.Mui-checked": { color: "var(--accent)" },
+    "&.Mui-checked": { color: "var(--coral)" },
 };
 
 const HEADSIGN_MUTE = 0.7;
@@ -100,7 +108,7 @@ const bodyCellSx = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.9rem",
     color: "var(--ink)",
-    borderColor: "var(--line)",
+    borderColor: "var(--hairline)",
     minWidth: 'auto',
     // Belt-and-suspenders alongside the headsign chip's own maxWidth/ellipsis:
     // some browsers resolve a percentage-based maxWidth on a descendant
@@ -108,6 +116,89 @@ const bodyCellSx = {
     // also clips rather than relying solely on the child computing it right.
     overflow: 'hidden',
 };
+
+// Shared between the table (sm+) and card (xs) layouts so the two views
+// can't visually drift apart - each returns just the cell's inner content,
+// let the caller wrap it in a <TableCell> or a plain <Box>.
+function HeadsignChip({ message }: { message: StreamedUpdate }) {
+    if (message.trip_headsign == null) return null;
+    return (
+        <Tooltip title={message.trip_headsign}>
+            <Box
+                component="span"
+                sx={{
+                    display: "inline-block",
+                    px: 1,
+                    py: 0.25,
+                    borderRadius: "6px",
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--coral)")} ${HEADSIGN_MUTE * 100}%, var(--surface))`,
+                    color: toCssColor(message.text_color, "#fff"),
+                    maxWidth: "100%",
+                }}
+            >
+                { message.trip_headsign }
+            </Box>
+        </Tooltip>
+    );
+}
+
+// message.status is e.g. "In Transit 💨" / "Stopped 🛑" - the emoji is
+// always the trailing space-separated token, straight from the backend's
+// Status enum (src/models.py).
+const statusEmoji = (status: string) => status.split(" ").pop() ?? status;
+const isInTransit = (status: string) => status.startsWith("In Transit");
+
+// Compact mode (small screens) is emoji-only, so a moving vehicle needs its
+// own motion cue in place of the word "In Transit" - a once-a-second fade
+// reads as "still moving" without being as attention-grabbing as the
+// TripDetailCard's accent-color blink (that one flags "look at this now";
+// this one is just ambient status).
+const fadePulse = keyframes`
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+`;
+
+function StatusPill({ message, compact = false }: { message: StreamedUpdate; compact?: boolean }) {
+    // Neutral treatment: "Stopped"/"In Transit" is a motion state, not
+    // schedule adherence, so both statuses use the same coloring rather
+    // than implying one is "bad".
+    const animate = compact && isInTransit(message.status);
+    const pill = (
+        <Box
+            component="span"
+            sx={{
+                display: "inline-block",
+                px: compact ? 0.75 : 1,
+                py: compact ? 0.25 : 0.375,
+                borderRadius: "20px",
+                backgroundColor: "color-mix(in srgb, var(--ink-secondary) 20%, transparent)",
+                color: "var(--ink-secondary)",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+                animation: animate ? `${fadePulse} 1s ease-in-out infinite` : "none",
+                "@media (prefers-reduced-motion: reduce)": {
+                    animation: "none",
+                },
+            }}
+        >
+            { compact ? statusEmoji(message.status) : message.status }
+        </Box>
+    );
+    // Compact mode drops the text label, so the tooltip is the only way to
+    // recover it (besides opening the trip detail card).
+    return compact ? <Tooltip title={message.status}>{pill}</Tooltip> : pill;
+}
+
+function NextTimeTooltip({ message, children }: { message: StreamedUpdate; children: ReactElement }) {
+    const label = message.status == "Stopped"
+        ? "Previous Arrival: " + new Date(message.previous * 1000).toLocaleTimeString()
+        : "Previous Departure: " + new Date(message.previous * 1000).toLocaleTimeString();
+    return <Tooltip title={label}>{children}</Tooltip>;
+}
 
 // Departure-board flip: each newly-arrived row rotates in around its top
 // edge, like a Solari split-flap panel dropping into place. Triggered purely
@@ -142,6 +233,9 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
         stop_name: new Set(),
     });
     const [headerMenu, setHeaderMenu] = useState<{ anchorEl: HTMLElement; field: SortField } | null>(null);
+
+    // Which trip's detail card is open, if any - set by clicking a row.
+    const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
     // Distinct values currently in the buffer, for the filter checklists.
     // Recomputed as messages stream in/age out, so the checklist always
@@ -192,6 +286,10 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
     const clearAllValues = (field: FilterField) =>
         setExcludedValues((prev) => ({ ...prev, [field]: new Set(distinctValues[field]) }));
 
+    // Shared by the table headers (sm+) and the mobile toolbar buttons.
+    const isColumnActive = (field: SortField) =>
+        sort?.field === field || (isFilterField(field) && excludedValues[field].size > 0);
+
     useEffect(() => {
         // Empty until the transit system list has loaded and picked a default.
         if (!systemId) return;
@@ -220,7 +318,20 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                 try {
                     const newEventData: TripUpdate = JSON.parse(event.data);
                     const row: StreamedUpdate = { ...newEventData, seq: seqRef.current++ };
-                    setMessages((prev) => [row, ...prev.slice(0, MAX_MESSAGES - 1)]);
+                    setMessages((prev) => {
+                        // The backend re-emits every active trip on every poll (not just
+                        // the ones that changed), so the same trip_id shows up repeatedly
+                        // over time - update that trip's existing row in place (a fresh
+                        // seq still re-triggers its mount animation) rather than piling up
+                        // duplicate rows for the same trip.
+                        const existingIndex = prev.findIndex((m) => m.trip_id === row.trip_id);
+                        if (existingIndex !== -1) {
+                            const next = [...prev];
+                            next[existingIndex] = row;
+                            return next;
+                        }
+                        return [row, ...prev.slice(0, MAX_MESSAGES - 1)];
+                    });
                 } catch {
                     console.error("Malformed SSE payload:", event.data);
                 }
@@ -251,14 +362,13 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
     }, [systemId]);
 
     return (
-        <TableContainer
-            component={Paper}
+        <>
+        <Box
             sx={{
                 fontFamily: "var(--font-body)",
-                backgroundColor: "var(--panel)",
-                border: "1px solid var(--line)",
+                backgroundColor: "var(--surface)",
+                border: "1px solid var(--hairline)",
                 borderRadius: "var(--radius)",
-                boxShadow: "none",
             }}
         >
             { !connected && (
@@ -270,133 +380,190 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                         fontWeight: 600,
                         px: 2,
                         py: 0.5,
-                        backgroundColor: "color-mix(in srgb, var(--rust) 22%, transparent)",
-                        color: "var(--rust)",
+                        backgroundColor: "color-mix(in srgb, var(--coral-ink) 22%, transparent)",
+                        color: "var(--coral-ink)",
                     }}
                 >
                     Reconnecting&hellip; arrival times may be stale.
                 </Box>
             )}
-            <Table sx={{ minWidth: 650, tableLayout: 'fixed', borderCollapse: 'collapse', perspective: '600px', fontFamily: "var(--font-mono)" }} aria-label="simple table">
-                <TableHead>
-                    <TableRow>
-                        <TableCell sx={headCellSx}>
-                            Line
-                            <IconButton
-                                size="small"
-                                onClick={openHeaderMenu("trip_headsign")}
-                                aria-label="Sort or filter Line column"
-                                sx={{
-                                    color: (sort?.field === "trip_headsign" || excludedValues.trip_headsign.size > 0) ? "var(--accent)" : "inherit",
-                                    p: 0.25,
-                                    ml: 0.5,
-                                    verticalAlign: "middle",
-                                }}
-                            >
-                                <FilterIcon />
-                            </IconButton>
-                        </TableCell>
-                        <TableCell align="right" sx={headCellSx}>
-                            Station
-                            <IconButton
-                                size="small"
-                                onClick={openHeaderMenu("stop_name")}
-                                aria-label="Sort or filter Station column"
-                                sx={{
-                                    color: (sort?.field === "stop_name" || excludedValues.stop_name.size > 0) ? "var(--accent)" : "inherit",
-                                    p: 0.25,
-                                    ml: 0.5,
-                                    verticalAlign: "middle",
-                                }}
-                            >
-                                <FilterIcon />
-                            </IconButton>
-                        </TableCell>
-                        {/*<TableCell align="right" sx={headCellSx}>Last</TableCell>*/}
-                        <TableCell align="right" sx={headCellSx}>Status</TableCell>
-                        <TableCell align="right" sx={headCellSx}>
-                            Next
-                            <IconButton
-                                size="small"
-                                onClick={openHeaderMenu("next")}
-                                aria-label="Sort Next column"
-                                sx={{
-                                    color: sort?.field === "next" ? "var(--accent)" : "inherit",
-                                    p: 0.25,
-                                    ml: 0.5,
-                                    verticalAlign: "middle",
-                                }}
-                            >
-                                <FilterIcon />
-                            </IconButton>
-                        </TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {visibleMessages.map((message) => (
-                        <TableRow
-                            key={ message.seq }
-                            sx={{
-                                animation: `${flapIn} 180ms ease-out`,
-                                transformOrigin: "top",
-                                // No zebra striping (Bahnhof spec: row borders only).
-                                '&:hover': { backgroundColor: "var(--bg-elev)" },
-                                '&:last-child td, &:last-child th': { border: 0 },
-                            }}
-                        >
-                            <TableCell component="th" scope="row" sx={bodyCellSx}>
-                                { message.trip_headsign != null && (
-                                    <Tooltip title={message.trip_headsign}>
-                                        <Box
-                                            component="span"
-                                            sx={{
-                                                display: "inline-block",
-                                                px: 1,
-                                                py: 0.25,
-                                                borderRadius: "6px",
-                                                fontWeight: 700,
-                                                whiteSpace: "nowrap",
-                                                overflow: "hidden",
-                                                textOverflow: "ellipsis",
-                                                backgroundColor: `color-mix(in srgb, ${toCssColor(message.color, "var(--accent)")} ${HEADSIGN_MUTE * 100}%, var(--panel))`,
-                                                color: toCssColor(message.text_color, "#fff"),
-                                                maxWidth: "100%",
-                                            }}
-                                        >
-                                            { message.trip_headsign }
-                                        </Box>
-                                    </Tooltip>
-                                )}
-                            </TableCell>
-                            <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>
-                            <TableCell align="right" sx={bodyCellSx}>
-                                {/* Neutral treatment: "Stopped"/"In Transit" is a motion
-                                    state, not schedule adherence, so both statuses use the
-                                    same coloring rather than the spec's --ok/--rust pair
-                                    (which would misleadingly imply one is "bad"). */}
-                                <Box
-                                    component="span"
+
+            {/* sm and up: the full table. Below sm it doesn't degrade
+                gracefully (tableLayout:'fixed' + minWidth:650 would force
+                either horizontal scroll or over-squished columns), so xs
+                gets the stacked-card layout below instead. */}
+            <TableContainer sx={{ display: { xs: "none", sm: "block" } }}>
+                <Table sx={{ minWidth: 650, tableLayout: 'fixed', borderCollapse: 'collapse', perspective: '600px', fontFamily: "var(--font-mono)" }} aria-label="simple table">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell sx={headCellSx}>
+                                Line
+                                <IconButton
+                                    size="small"
+                                    onClick={openHeaderMenu("trip_headsign")}
+                                    aria-label="Sort or filter Line column"
                                     sx={{
-                                        display: "inline-block",
-                                        px: 1,
-                                        py: 0.375,
-                                        borderRadius: "20px",
-                                        backgroundColor: "color-mix(in srgb, var(--ink-dim) 20%, transparent)",
-                                        color: "var(--ink-dim)",
+                                        color: isColumnActive("trip_headsign") ? "var(--coral)" : "inherit",
+                                        p: 0.25,
+                                        ml: 0.5,
+                                        verticalAlign: "middle",
                                     }}
                                 >
-                                    { message.status }
-                                </Box>
+                                    <FilterIcon />
+                                </IconButton>
                             </TableCell>
-                            <Tooltip title={message.status == "Stopped" ? "Previous Arrival: "  + new Date(message.previous * 1000).toLocaleTimeString() : "Previous Departure: " + new Date(message.previous * 1000).toLocaleTimeString()}>
-                                <TableCell align="right" sx={[bodyCellSx, { letterSpacing: "0.05em" }]}>
-                                    { new Date(message.next * 1000).toLocaleTimeString() }
-                                </TableCell>
-                            </Tooltip>
+                            <TableCell align="right" sx={headCellSx}>
+                                Station
+                                <IconButton
+                                    size="small"
+                                    onClick={openHeaderMenu("stop_name")}
+                                    aria-label="Sort or filter Station column"
+                                    sx={{
+                                        color: isColumnActive("stop_name") ? "var(--coral)" : "inherit",
+                                        p: 0.25,
+                                        ml: 0.5,
+                                        verticalAlign: "middle",
+                                    }}
+                                >
+                                    <FilterIcon />
+                                </IconButton>
+                            </TableCell>
+                            {/*<TableCell align="right" sx={headCellSx}>Last</TableCell>*/}
+                            <TableCell align="right" sx={headCellSx}>Status</TableCell>
+                            <TableCell align="right" sx={headCellSx}>
+                                Next
+                                <IconButton
+                                    size="small"
+                                    onClick={openHeaderMenu("next")}
+                                    aria-label="Sort Next column"
+                                    sx={{
+                                        color: isColumnActive("next") ? "var(--coral)" : "inherit",
+                                        p: 0.25,
+                                        ml: 0.5,
+                                        verticalAlign: "middle",
+                                    }}
+                                >
+                                    <FilterIcon />
+                                </IconButton>
+                            </TableCell>
                         </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {visibleMessages.map((message) => (
+                            <TableRow
+                                key={ message.seq }
+                                onClick={() => setSelectedTripId(message.trip_id)}
+                                sx={{
+                                    animation: `${flapIn} 180ms ease-out`,
+                                    transformOrigin: "top",
+                                    cursor: "pointer",
+                                    // No zebra striping - row borders only.
+                                    '&:hover': { backgroundColor: "var(--surface-raised)" },
+                                    '&:last-child td, &:last-child th': { border: 0 },
+                                }}
+                            >
+                                <TableCell component="th" scope="row" sx={bodyCellSx}>
+                                    <HeadsignChip message={message} />
+                                </TableCell>
+                                <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>
+                                <TableCell align="right" sx={bodyCellSx}>
+                                    <StatusPill message={message} />
+                                </TableCell>
+                                <NextTimeTooltip message={message}>
+                                    <TableCell align="right" sx={[bodyCellSx, { letterSpacing: "0.05em" }]}>
+                                        { new Date(message.next * 1000).toLocaleTimeString() }
+                                    </TableCell>
+                                </NextTimeTooltip>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+
+            {/* Below sm: one stacked card per trip instead of table rows,
+                plus a compact sort/filter toolbar standing in for the column
+                headers (same openHeaderMenu/Menu the table uses). */}
+            <Box sx={{ display: { xs: "block", sm: "none" } }}>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, px: 2, py: 1.5, borderBottom: "1px solid var(--hairline)" }}>
+                    {(["trip_headsign", "stop_name", "next"] as SortField[]).map((field) => (
+                        <Box
+                            key={field}
+                            component="button"
+                            onClick={openHeaderMenu(field)}
+                            aria-label={`Sort or filter ${COLUMN_LABELS[field]} column`}
+                            sx={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 0.5,
+                                fontFamily: "var(--font-mono)",
+                                fontSize: "0.75rem",
+                                letterSpacing: "0.08em",
+                                textTransform: "uppercase",
+                                fontWeight: 600,
+                                color: isColumnActive(field) ? "var(--coral)" : "var(--ink-secondary)",
+                                backgroundColor: "transparent",
+                                border: "1px solid var(--hairline)",
+                                borderRadius: "20px",
+                                px: 1.25,
+                                py: 0.5,
+                                cursor: "pointer",
+                            }}
+                        >
+                            { COLUMN_LABELS[field] }
+                            <FilterIcon />
+                        </Box>
                     ))}
-                </TableBody>
-            </Table>
+                </Box>
+                {visibleMessages.map((message) => (
+                    <Box
+                        key={message.seq}
+                        onClick={() => setSelectedTripId(message.trip_id)}
+                        sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 0.75,
+                            px: 2,
+                            py: 1.5,
+                            borderBottom: "1px solid var(--hairline)",
+                            cursor: "pointer",
+                            animation: `${flapIn} 180ms ease-out`,
+                            transformOrigin: "top",
+                            fontFamily: "var(--font-mono)",
+                            '&:hover': { backgroundColor: "var(--surface-raised)" },
+                            '&:last-of-type': { borderBottom: 0 },
+                        }}
+                    >
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            {/* minWidth:0 alone isn't enough here: a flex item's
+                                automatic minimum size only drops to 0 (letting it
+                                shrink below its nowrap-text content's full width)
+                                when the item's own overflow isn't the visible
+                                default - without this the chip could still push
+                                past the status pill instead of truncating first. */}
+                            {/* textAlign:'left' is load-bearing, not decorative: this
+                                Box otherwise inherits index.css's #root { text-align:
+                                center }, and once the chip is shorter than the space
+                                flex-grow gives it, that leftover space would center it
+                                instead of pinning it to the left edge. */}
+                            <Box sx={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textAlign: "left" }}>
+                                <HeadsignChip message={message} />
+                            </Box>
+                            <StatusPill message={message} compact />
+                        </Box>
+                        <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
+                            <Box component="span" sx={{ fontSize: "0.95rem", color: "var(--ink)" }}>
+                                { message.stop_name }
+                            </Box>
+                            <NextTimeTooltip message={message}>
+                                <Box component="span" sx={{ fontSize: "0.95rem", letterSpacing: "0.05em", color: "var(--ink)", flexShrink: 0 }}>
+                                    { new Date(message.next * 1000).toLocaleTimeString() }
+                                </Box>
+                            </NextTimeTooltip>
+                        </Box>
+                    </Box>
+                ))}
+            </Box>
+
             <Menu
                 anchorEl={headerMenu?.anchorEl ?? null}
                 open={Boolean(headerMenu)}
@@ -415,7 +582,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                         : []),
                     ...(isFilterField(headerMenu.field)
                         ? [
-                            <Divider key="divider" sx={{ borderColor: "var(--line)", my: 0.5 }} />,
+                            <Divider key="divider" sx={{ borderColor: "var(--hairline)", my: 0.5 }} />,
                             <MenuItem key="select-all" onClick={() => selectAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
                                 Select All
                             </MenuItem>,
@@ -442,6 +609,12 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                         : []),
                 ]}
             </Menu>
-        </TableContainer>
+        </Box>
+        <TripDetailCard
+            systemId={systemId}
+            tripId={selectedTripId}
+            onClose={() => setSelectedTripId(null)}
+        />
+        </>
     )
 }

@@ -1,11 +1,11 @@
 import { Box, Typography } from "@mui/material";
 
-// Bahnhof design system (bahnhof-design-spec.md), matching the header's
-// dropdown-menu panel treatment for section backgrounds, and the table's
-// own header/row text treatment for titles/body respectively.
+// Matches the header's dropdown-menu panel treatment for section
+// backgrounds, and the table's own header/row text treatment for
+// titles/body respectively.
 const sectionSx = {
-    backgroundColor: "var(--bg-elev)",
-    border: "1px solid var(--line)",
+    backgroundColor: "var(--surface-raised)",
+    border: "1px solid var(--hairline)",
     borderRadius: "var(--radius)",
     p: { xs: 2, sm: 3 },
     width: "80%",
@@ -18,7 +18,7 @@ const titleSx = {
     letterSpacing: "0.1em",
     textTransform: "uppercase",
     fontWeight: 600,
-    color: "var(--ink-dim)",
+    color: "var(--ink-secondary)",
     mb: 1.5,
 };
 
@@ -30,7 +30,7 @@ const bodySx = {
 };
 
 const linkSx = {
-    color: "var(--accent)",
+    color: "var(--coral)",
 };
 
 export default function About() {
