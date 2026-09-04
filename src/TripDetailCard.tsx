@@ -69,6 +69,20 @@ type TripDetail = {
     stops: TripStopDetail[];
 };
 
+const stopFieldLabelSx = {
+    fontFamily: "var(--font-mono)",
+    fontSize: "0.7rem",
+    letterSpacing: "0.08em",
+    textTransform: "uppercase" as const,
+    fontWeight: 600,
+    color: "var(--ink-secondary)",
+};
+const stopFieldValueSx = {
+    fontFamily: "var(--font-mono)",
+    fontSize: "0.95rem",
+    color: "var(--ink)",
+};
+
 const stopHeadCellSx = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.8rem",
@@ -241,43 +255,98 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                     </Typography>
                 )}
                 {detail && (
-                    <TableContainer sx={{ border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
-                        <Table size="small" sx={{ minWidth: 560 }}>
-                            <TableHead>
-                                <TableRow>
-                                    <TableCell sx={stopHeadCellSx}>Stop</TableCell>
-                                    <TableCell sx={stopHeadCellSx}>Arrival</TableCell>
-                                    <TableCell sx={stopHeadCellSx}>Arrival delayed by</TableCell>
-                                    <TableCell sx={stopHeadCellSx}>Departure</TableCell>
-                                    <TableCell sx={stopHeadCellSx}>Departure delayed by</TableCell>
-                                </TableRow>
-                            </TableHead>
-                            <TableBody>
-                                { detail.stops.map((stop, index) => {
-                                    const isNext = index === nextStopIndex;
-                                    const isDelayed = stop.arrival_delay != null && stop.arrival_delay > 0;
-                                    return (
-                                        <TableRow
-                                            key={`${stop.stop_id}-${index}`}
-                                            sx={[
-                                                { '&:hover': { backgroundColor: "var(--surface-raised)" } },
-                                                // --coral-tint, not --coral itself, so the row highlight
-                                                // never lands on the same hue/lightness as the blinking
-                                                // text pulsing through it.
-                                                isNext ? { backgroundColor: "var(--coral-tint)" } : {},
-                                            ]}
-                                        >
-                                            <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ stop.stop_name ?? stop.stop_id }</TableCell>
-                                            <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatEpochSeconds(stop.arrival_time) }</TableCell>
-                                            <TableCell sx={isNext && isDelayed ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatDelay(stop.arrival_delay) }</TableCell>
-                                            <TableCell sx={stopBodyCellSx}>{ formatEpochSeconds(stop.departure_time) }</TableCell>
-                                            <TableCell sx={stopBodyCellSx}>{ formatDelay(stop.departure_delay) }</TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                            </TableBody>
-                        </Table>
-                    </TableContainer>
+                    <>
+                        {/* sm and up: full table. Below sm, a table needs
+                            either a side-scroll or squished columns for all
+                            five fields, so xs gets the stacked layout below
+                            instead - taller per-stop blocks, no side scroll. */}
+                        <TableContainer sx={{ display: { xs: "none", sm: "block" }, border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
+                            <Table size="small" sx={{ minWidth: 560 }}>
+                                <TableHead>
+                                    <TableRow>
+                                        <TableCell sx={stopHeadCellSx}>Stop</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Arrival</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Arrival delayed by</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Departure</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Departure delayed by</TableCell>
+                                    </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                    { detail.stops.map((stop, index) => {
+                                        const isNext = index === nextStopIndex;
+                                        const isDelayed = stop.arrival_delay != null && stop.arrival_delay > 0;
+                                        return (
+                                            <TableRow
+                                                key={`${stop.stop_id}-${index}`}
+                                                sx={[
+                                                    { '&:hover': { backgroundColor: "var(--surface-raised)" } },
+                                                    // --coral-tint, not --coral itself, so the row highlight
+                                                    // never lands on the same hue/lightness as the blinking
+                                                    // text pulsing through it.
+                                                    isNext ? { backgroundColor: "var(--coral-tint)" } : {},
+                                                ]}
+                                            >
+                                                <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ stop.stop_name ?? stop.stop_id }</TableCell>
+                                                <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatEpochSeconds(stop.arrival_time) }</TableCell>
+                                                <TableCell sx={isNext && isDelayed ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatDelay(stop.arrival_delay) }</TableCell>
+                                                <TableCell sx={stopBodyCellSx}>{ formatEpochSeconds(stop.departure_time) }</TableCell>
+                                                <TableCell sx={stopBodyCellSx}>{ formatDelay(stop.departure_delay) }</TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </TableContainer>
+
+                        <Box sx={{ display: { xs: "block", sm: "none" }, border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
+                            { detail.stops.map((stop, index) => {
+                                const isNext = index === nextStopIndex;
+                                const isDelayed = stop.arrival_delay != null && stop.arrival_delay > 0;
+                                return (
+                                    <Box
+                                        key={`m-${stop.stop_id}-${index}`}
+                                        sx={[
+                                            {
+                                                px: 2,
+                                                py: 1.5,
+                                                borderBottom: "1px solid var(--hairline)",
+                                                '&:last-of-type': { borderBottom: 0 },
+                                            },
+                                            isNext ? { backgroundColor: "var(--coral-tint)" } : {},
+                                        ]}
+                                    >
+                                        <Box sx={isNext ? [stopFieldValueSx, blinkSx, { fontSize: "1rem" }] : [stopFieldValueSx, { fontSize: "1rem" }]}>
+                                            { stop.stop_name ?? stop.stop_id }
+                                        </Box>
+                                        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mt: 1 }}>
+                                            <Box>
+                                                <Box sx={stopFieldLabelSx}>Arrival</Box>
+                                                <Box sx={isNext ? [stopFieldValueSx, blinkSx] : stopFieldValueSx}>
+                                                    { formatEpochSeconds(stop.arrival_time) }
+                                                </Box>
+                                            </Box>
+                                            <Box sx={{ textAlign: "right" }}>
+                                                <Box sx={stopFieldLabelSx}>Arrival delayed by</Box>
+                                                <Box sx={isNext && isDelayed ? [stopFieldValueSx, blinkSx] : stopFieldValueSx}>
+                                                    { formatDelay(stop.arrival_delay) }
+                                                </Box>
+                                            </Box>
+                                        </Box>
+                                        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mt: 1 }}>
+                                            <Box>
+                                                <Box sx={stopFieldLabelSx}>Departure</Box>
+                                                <Box sx={stopFieldValueSx}>{ formatEpochSeconds(stop.departure_time) }</Box>
+                                            </Box>
+                                            <Box sx={{ textAlign: "right" }}>
+                                                <Box sx={stopFieldLabelSx}>Departure delayed by</Box>
+                                                <Box sx={stopFieldValueSx}>{ formatDelay(stop.departure_delay) }</Box>
+                                            </Box>
+                                        </Box>
+                                    </Box>
+                                );
+                            })}
+                        </Box>
+                    </>
                 )}
             </Box>
         </Dialog>

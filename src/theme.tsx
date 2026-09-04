@@ -14,6 +14,21 @@ const theme = createTheme({
             paper: '#777572',   // R:119 G:117 B:114 gray
         },
     },
+    components: {
+        MuiCssBaseline: {
+            styleOverrides: {
+                // The app's actual palette lives in theme.css's CSS custom
+                // properties (light/dark via [data-theme]), not this MUI
+                // theme object's own (unrelated, unused elsewhere) palette
+                // above - pin CssBaseline's body reset to the real tokens so
+                // it doesn't flash the eggplant/tan colors underneath them.
+                body: {
+                    backgroundColor: "var(--bg)",
+                    color: "var(--ink)",
+                },
+            },
+        },
+    },
 });
 
 export default theme;

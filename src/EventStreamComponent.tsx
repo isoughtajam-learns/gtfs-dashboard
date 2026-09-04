@@ -533,8 +533,19 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                             '&:last-of-type': { borderBottom: 0 },
                         }}
                     >
-                        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
-                            <Box sx={{ minWidth: 0 }}>
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                            {/* minWidth:0 alone isn't enough here: a flex item's
+                                automatic minimum size only drops to 0 (letting it
+                                shrink below its nowrap-text content's full width)
+                                when the item's own overflow isn't the visible
+                                default - without this the chip could still push
+                                past the status pill instead of truncating first. */}
+                            {/* textAlign:'left' is load-bearing, not decorative: this
+                                Box otherwise inherits index.css's #root { text-align:
+                                center }, and once the chip is shorter than the space
+                                flex-grow gives it, that leftover space would center it
+                                instead of pinning it to the left edge. */}
+                            <Box sx={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textAlign: "left" }}>
                                 <HeadsignChip message={message} />
                             </Box>
                             <StatusPill message={message} compact />

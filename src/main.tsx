@@ -15,6 +15,7 @@ import './index.css'
 import './styles/theme.css'
 import App from './App.tsx'
 import {ThemeProvider} from "@mui/material/styles";
+import CssBaseline from "@mui/material/CssBaseline";
 import theme from './theme.tsx';
 
 // Runs before the first paint so there's no flash of the wrong palette:
@@ -46,6 +47,7 @@ if (import.meta.env.VITE_POSTHOG_KEY) {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
       <ThemeProvider theme={theme}>
+          <CssBaseline />
           <BrowserRouter>
               <App />
           </BrowserRouter>
