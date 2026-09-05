@@ -3,6 +3,8 @@ import type { MouseEvent, ReactElement } from 'react';
 import {Box, Checkbox, Divider, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
+import { Lottie } from "lottie-react";
+import trainLoaderAnimation from "./assets/train-loader.json";
 import TripDetailCard from "./TripDetailCard.tsx";
 
 type TripUpdate = {
@@ -217,6 +219,9 @@ type EventStreamComponentProps = {
 };
 
 export default function EventStreamComponent({ systemId }: EventStreamComponentProps) {
+    // Static per session, not worth a matchMedia change-listener - gates
+    // whether the loading animation below plays or just sits on its first frame.
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const [messages, setMessages] = useState<StreamedUpdate[]>([]);
     const [connected, setConnected] = useState(false);
     // A ref, not an effect-local counter: it has to outlive reconnects and StrictMode's
@@ -388,6 +393,37 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                 </Box>
             )}
 
+            { messages.length === 0 ? (
+                // Covers both the initial connect and a system switch (which
+                // clears messages) - gone the moment the first SSE event for
+                // this system lands, regardless of connection state.
+                <Box
+                    role="status"
+                    aria-live="polite"
+                    sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 1.5,
+                        py: 8,
+                    }}
+                >
+                    {/* "Train Loader" by Radhikakpor (lottiefiles.com/radhikakpr),
+                        credited in About.tsx. Paused on its first frame rather
+                        than looping when the user prefers reduced motion. */}
+                    <Lottie
+                        src={trainLoaderAnimation}
+                        loop={!prefersReducedMotion}
+                        autoplay={!prefersReducedMotion}
+                        style={{ width: 160, height: 120 }}
+                    />
+                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                        Loading arrivals&hellip;
+                    </Box>
+                </Box>
+            ) : (
+            <>
             {/* sm and up: the full table. Below sm it doesn't degrade
                 gracefully (tableLayout:'fixed' + minWidth:650 would force
                 either horizontal scroll or over-squished columns), so xs
@@ -563,6 +599,8 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                     </Box>
                 ))}
             </Box>
+            </>
+            )}
 
             <Menu
                 anchorEl={headerMenu?.anchorEl ?? null}

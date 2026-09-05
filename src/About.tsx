@@ -96,6 +96,13 @@ export default function About() {
                     <Box component="a" href="https://www.flaticon.com/free-icons/office" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Office icons
                     </Box> created by Magnific - Flaticon
+                    <br />
+                    <Box component="a" href="https://lottiefiles.com/free-animation/train-loader-iXPbOv0tEb" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Train loader animation
+                    </Box> by{" "}
+                    <Box component="a" href="https://lottiefiles.com/radhikakpr" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        Radhikakpor
+                    </Box>
                 </Typography>
             </Box>
         </Box>
