@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactElement } from 'react';
-import {Box, Checkbox, Divider, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
+import {Box, Checkbox, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
 import { Lottie } from "lottie-react";
@@ -609,18 +609,24 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                 slotProps={{ paper: { sx: menuPaperSx } }}
             >
                 {headerMenu && [
-                    <MenuItem key="asc" onClick={() => applySort(headerMenu.field, "asc")} sx={menuItemSx}>
-                        Sort Ascending
-                    </MenuItem>,
-                    <MenuItem key="desc" onClick={() => applySort(headerMenu.field, "desc")} sx={menuItemSx}>
-                        Sort Descending
-                    </MenuItem>,
-                    ...(sort?.field === headerMenu.field
-                        ? [<MenuItem key="clear-sort" onClick={clearSort} sx={menuItemSx}>Clear Sort</MenuItem>]
+                    // Line/Station are filter-only now (no Sort Ascending/
+                    // Descending) - only Next, which has no filter, still
+                    // gets sort options.
+                    ...(!isFilterField(headerMenu.field)
+                        ? [
+                            <MenuItem key="asc" onClick={() => applySort(headerMenu.field, "asc")} sx={menuItemSx}>
+                                Sort Ascending
+                            </MenuItem>,
+                            <MenuItem key="desc" onClick={() => applySort(headerMenu.field, "desc")} sx={menuItemSx}>
+                                Sort Descending
+                            </MenuItem>,
+                            ...(sort?.field === headerMenu.field
+                                ? [<MenuItem key="clear-sort" onClick={clearSort} sx={menuItemSx}>Clear Sort</MenuItem>]
+                                : []),
+                        ]
                         : []),
                     ...(isFilterField(headerMenu.field)
                         ? [
-                            <Divider key="divider" sx={{ borderColor: "var(--hairline)", my: 0.5 }} />,
                             <MenuItem key="select-all" onClick={() => selectAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
                                 Select All
                             </MenuItem>,

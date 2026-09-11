@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import type { SelectChangeEvent } from "@mui/material";
 import { AppBar, Box, IconButton, Menu, MenuItem, Select, Toolbar, Typography } from "@mui/material";
 import SplitFlapTitle from "./SplitFlapTitle.tsx";
+import ServiceAlertsModal from "./ServiceAlertsModal.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
 
 // No @mui/icons-material dependency in this project; three bars is all a hamburger needs.
@@ -36,6 +37,30 @@ function MoonIcon() {
         </svg>
     );
 }
+// Outline by default, matching the Sun/Moon/hamburger icons' style; filled
+// solid (plus an exclamation mark, in a contrasting color so it reads
+// against the fill) when there's something to flag.
+function BellIcon({ hasAlerts }: { hasAlerts: boolean }) {
+    return (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+                d="M15 6.67A5 5 0 0 0 5 6.67c0 5.83-2.5 7.5-2.5 7.5h15s-2.5-1.67-2.5-7.5"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill={hasAlerts ? "currentColor" : "none"}
+            />
+            <path d="M11.44 17.5a1.67 1.67 0 0 1-2.88 0" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            { hasAlerts && (
+                <>
+                    <line x1="10" y1="8.2" x2="10" y2="11.6" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" />
+                    <circle cx="10" cy="13.2" r="0.75" fill="#fff" />
+                </>
+            )}
+        </svg>
+    );
+}
 
 const THEME_STORAGE_KEY = "theme";
 
@@ -63,6 +88,34 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     const [themeMode, setThemeMode] = useState<"light" | "dark">(
         () => (document.documentElement.dataset.theme === "dark" ? "dark" : "light")
     );
+    const [alertsOpen, setAlertsOpen] = useState(false);
+    const selectedSystemLabel = systems.find((system) => system.id === selectedSystemId)?.label;
+
+    // Independent of the modal's own on-open fetch - this one runs whenever
+    // the selected system changes, just to badge the bell, whether or not
+    // the modal has ever been opened. 404/502/errors all mean "nothing to
+    // show a badge for", not a real failure worth surfacing here.
+    const [hasAlerts, setHasAlerts] = useState(false);
+    useEffect(() => {
+        if (!selectedSystemId) {
+            setHasAlerts(false);
+            return;
+        }
+        let cancelled = false;
+        fetch(`/api/service_alerts/${selectedSystemId}`)
+            .then(async (res) => {
+                if (!res.ok) {
+                    if (!cancelled) setHasAlerts(false);
+                    return;
+                }
+                const alerts: unknown[] = await res.json();
+                if (!cancelled) setHasAlerts(Array.isArray(alerts) && alerts.length > 0);
+            })
+            .catch(() => {
+                if (!cancelled) setHasAlerts(false);
+            });
+        return () => { cancelled = true; };
+    }, [selectedSystemId]);
 
     const handleMenuOpen = (event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
     const handleMenuClose = () => setAnchorEl(null);
@@ -181,6 +234,13 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                         </MenuItem>
                     ))}
                 </Select>}
+                {location.pathname === "/" && <IconButton
+                    onClick={() => setAlertsOpen(true)}
+                    aria-label="Service alerts"
+                    sx={{ color: "var(--coral)" }}
+                >
+                    <BellIcon hasAlerts={hasAlerts} />
+                </IconButton>}
                 <IconButton
                     onClick={toggleTheme}
                     aria-label={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -221,6 +281,12 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     ))}
                 </Menu>
             </Toolbar>
+            <ServiceAlertsModal
+                systemId={selectedSystemId}
+                systemLabel={selectedSystemLabel}
+                open={alertsOpen}
+                onClose={() => setAlertsOpen(false)}
+            />
         </AppBar>
     );
 }
