@@ -33,8 +33,10 @@ FROM node:20-alpine AS dev
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
+COPY scripts/wait-for-backend.sh /usr/local/bin/wait-for-backend.sh
+RUN chmod +x /usr/local/bin/wait-for-backend.sh
 EXPOSE 5173
-CMD ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0"]
+CMD ["sh", "-c", "npm install && wait-for-backend.sh && npm run dev -- --host 0.0.0.0"]
 
 # Production stage
 FROM nginx:alpine
