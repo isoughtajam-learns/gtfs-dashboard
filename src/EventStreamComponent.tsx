@@ -6,6 +6,8 @@ import { keyframes } from "@emotion/react";
 import { Lottie } from "lottie-react";
 import trainLoaderAnimation from "./assets/train-loader.json";
 import TripDetailCard from "./TripDetailCard.tsx";
+import TransitSystemSelect from "./TransitSystemSelect.tsx";
+import type { TransitSystem } from "./transitSystems.ts";
 
 type TripUpdate = {
     trip_id: string;
@@ -70,6 +72,39 @@ const COLUMN_LABELS: Record<SortField, string> = {
 const NO_LINE = "(No line)";
 const lineFilterValue = (message: StreamedUpdate) => message.trip_headsign ?? NO_LINE;
 
+// Sort/filter state persists across reloads (and across switching transit
+// systems, matching this app's existing in-session behavior of not
+// resetting them on system change) - not scoped per system, since the whole
+// point is "come back and see the same view you left".
+const FILTERS_STORAGE_KEY = "irl-transit:eventFilters";
+type StoredFilters = {
+    sort: { field: SortField; direction: SortDirection } | null;
+    excludedValues: Record<FilterField, string[]>;
+};
+
+// localStorage access can throw (Safari private browsing, sandboxed
+// iframes, disabled storage) - persistence is a nice-to-have, not worth
+// crashing over, so both directions fail soft to "no stored filters".
+function readStoredFilters(): StoredFilters | null {
+    try {
+        const raw = localStorage.getItem(FILTERS_STORAGE_KEY);
+        if (!raw) return null;
+        const parsed: unknown = JSON.parse(raw);
+        if (typeof parsed !== "object" || parsed === null || !("excludedValues" in parsed)) return null;
+        return parsed as StoredFilters;
+    } catch {
+        return null;
+    }
+}
+
+function writeStoredFilters(filters: StoredFilters): void {
+    try {
+        localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+    } catch {
+        // Filters still work for the rest of this session.
+    }
+}
+
 // Classic three-line funnel: active sort/filter state is conveyed by the
 // IconButton's own color (accent when this column has a sort or filter
 // applied), not by the glyph itself.
@@ -79,6 +114,17 @@ function FilterIcon() {
             <line x1="1" y1="1" x2="11" y2="1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             <line x1="2.5" y1="5" x2="9.5" y2="5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             <line x1="4.5" y1="9" x2="7.5" y2="9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+// Chevron for the mobile toolbar's expand/collapse toggle - flips to point
+// up (via the caller's rotate transform) once expanded, the standard
+// disclosure-widget affordance.
+function ChevronDownIcon() {
+    return (
+        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" aria-hidden="true">
+            <path d="M1 1.5 6 6.5 11 1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
     );
 }
@@ -103,7 +149,6 @@ const checkboxSx = {
     p: 0.5,
     "&.Mui-checked": { color: "var(--coral)" },
 };
-
 const HEADSIGN_MUTE = 0.7;
 
 const bodyCellSx = {
@@ -216,9 +261,11 @@ const flapIn = keyframes`
 
 type EventStreamComponentProps = {
     systemId: string;
+    systems: TransitSystem[];
+    onSystemChange: (systemId: string) => void;
 };
 
-export default function EventStreamComponent({ systemId }: EventStreamComponentProps) {
+export default function EventStreamComponent({ systemId, systems, onSystemChange }: EventStreamComponentProps) {
     // Static per session, not worth a matchMedia change-listener - gates
     // whether the loading animation below plays or just sits on its first frame.
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -231,16 +278,38 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
     // Sort/filter state for the Line, Station, and Next column headers. These
     // apply to the live buffer (re-derived below via useMemo) rather than
     // freezing it, so the visible rows keep streaming and re-sort/re-filter
-    // as new SSE events arrive.
-    const [sort, setSort] = useState<{ field: SortField; direction: SortDirection } | null>(null);
-    const [excludedValues, setExcludedValues] = useState<Record<FilterField, Set<string>>>({
-        trip_headsign: new Set(),
-        stop_name: new Set(),
+    // as new SSE events arrive. Seeded from localStorage (see
+    // readStoredFilters) so a reload comes back to the same view.
+    const [sort, setSort] = useState<{ field: SortField; direction: SortDirection } | null>(
+        () => readStoredFilters()?.sort ?? null
+    );
+    const [excludedValues, setExcludedValues] = useState<Record<FilterField, Set<string>>>(() => {
+        const stored = readStoredFilters()?.excludedValues;
+        return {
+            trip_headsign: new Set(stored?.trip_headsign ?? []),
+            stop_name: new Set(stored?.stop_name ?? []),
+        };
     });
     const [headerMenu, setHeaderMenu] = useState<{ anchorEl: HTMLElement; field: SortField } | null>(null);
+    // Below sm, the three column pills (each opening the same headerMenu
+    // above) live in a second row that expands/collapses via the toolbar's
+    // chevron toggle, rather than always taking up space.
+    const [mobileFiltersExpanded, setMobileFiltersExpanded] = useState(false);
 
     // Which trip's detail card is open, if any - set by clicking a row.
     const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+    // Persist sort/filter choices every time they change, not just on
+    // unmount, so a mid-session crash or closed tab doesn't lose them.
+    useEffect(() => {
+        writeStoredFilters({
+            sort,
+            excludedValues: {
+                trip_headsign: Array.from(excludedValues.trip_headsign),
+                stop_name: Array.from(excludedValues.stop_name),
+            },
+        });
+    }, [sort, excludedValues]);
 
     // Distinct values currently in the buffer, for the filter checklists.
     // Recomputed as messages stream in/age out, so the checklist always
@@ -294,6 +363,7 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
     // Shared by the table headers (sm+) and the mobile toolbar buttons.
     const isColumnActive = (field: SortField) =>
         sort?.field === field || (isFilterField(field) && excludedValues[field].size > 0);
+    const anyColumnActive = (["trip_headsign", "stop_name", "next"] as SortField[]).some(isColumnActive);
 
     useEffect(() => {
         // Empty until the transit system list has loaded and picked a default.
@@ -516,17 +586,21 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                 </Table>
             </TableContainer>
 
-            {/* Below sm: one stacked card per trip instead of table rows,
-                plus a compact sort/filter toolbar standing in for the column
-                headers (same openHeaderMenu/Menu the table uses). */}
+            {/* Below sm: one stacked card per trip instead of table rows.
+                A chevron toggle expands this same box downward into a
+                second row holding the three column pills (each opening the
+                same per-column headerMenu the desktop table uses), rather
+                than always taking up space; collapsed, the freed room holds
+                the transit system picker that the page header hides at this
+                width. */}
             <Box sx={{ display: { xs: "block", sm: "none" } }}>
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, px: 2, py: 1.5, borderBottom: "1px solid var(--hairline)" }}>
-                    {(["trip_headsign", "stop_name", "next"] as SortField[]).map((field) => (
+                <Box sx={{ borderBottom: "1px solid var(--hairline)" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: 2, py: 1.5 }}>
                         <Box
-                            key={field}
                             component="button"
-                            onClick={openHeaderMenu(field)}
-                            aria-label={`Sort or filter ${COLUMN_LABELS[field]} column`}
+                            onClick={() => setMobileFiltersExpanded((prev) => !prev)}
+                            aria-label={mobileFiltersExpanded ? "Hide column filters" : "Show column filters"}
+                            aria-expanded={mobileFiltersExpanded}
                             sx={{
                                 display: "inline-flex",
                                 alignItems: "center",
@@ -536,19 +610,62 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                                 letterSpacing: "0.08em",
                                 textTransform: "uppercase",
                                 fontWeight: 600,
-                                color: isColumnActive(field) ? "var(--coral)" : "var(--ink-secondary)",
+                                color: anyColumnActive ? "var(--coral)" : "var(--ink-secondary)",
                                 backgroundColor: "transparent",
                                 border: "1px solid var(--hairline)",
                                 borderRadius: "20px",
                                 px: 1.25,
                                 py: 0.5,
                                 cursor: "pointer",
+                                flexShrink: 0,
+                                "& svg": {
+                                    transition: "transform 150ms ease",
+                                    transform: mobileFiltersExpanded ? "rotate(180deg)" : "none",
+                                },
                             }}
                         >
-                            { COLUMN_LABELS[field] }
-                            <FilterIcon />
+                            Filters
+                            <ChevronDownIcon />
                         </Box>
-                    ))}
+                        <TransitSystemSelect
+                            systems={systems}
+                            selectedSystemId={systemId}
+                            onSystemChange={onSystemChange}
+                            sx={{ minWidth: 0 }}
+                        />
+                    </Box>
+                    {mobileFiltersExpanded && (
+                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, px: 2, pb: 1.5 }}>
+                            {(["trip_headsign", "stop_name", "next"] as SortField[]).map((field) => (
+                                <Box
+                                    key={field}
+                                    component="button"
+                                    onClick={openHeaderMenu(field)}
+                                    aria-label={`Sort or filter ${COLUMN_LABELS[field]} column`}
+                                    sx={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 0.5,
+                                        fontFamily: "var(--font-mono)",
+                                        fontSize: "0.75rem",
+                                        letterSpacing: "0.08em",
+                                        textTransform: "uppercase",
+                                        fontWeight: 600,
+                                        color: isColumnActive(field) ? "var(--coral)" : "var(--ink-secondary)",
+                                        backgroundColor: "transparent",
+                                        border: "1px solid var(--hairline)",
+                                        borderRadius: "20px",
+                                        px: 1.25,
+                                        py: 0.5,
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    { COLUMN_LABELS[field] }
+                                    <FilterIcon />
+                                </Box>
+                            ))}
+                        </Box>
+                    )}
                 </Box>
                 {visibleMessages.map((message) => (
                     <Box
@@ -587,7 +704,12 @@ export default function EventStreamComponent({ systemId }: EventStreamComponentP
                             <StatusPill message={message} compact />
                         </Box>
                         <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 1 }}>
-                            <Box component="span" sx={{ fontSize: "0.95rem", color: "var(--ink)" }}>
+                            {/* textAlign:'left' is load-bearing here too (see the
+                                headsign chip's wrapper above) - without it, a station
+                                name long enough to wrap onto a second line inherits
+                                index.css's #root { text-align: center } and that
+                                second line renders indented instead of flush left. */}
+                            <Box component="span" sx={{ fontSize: "0.95rem", color: "var(--ink)", textAlign: "left" }}>
                                 { message.stop_name }
                             </Box>
                             <NextTimeTooltip message={message}>
