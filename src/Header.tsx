@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import type { SelectChangeEvent } from "@mui/material";
-import { AppBar, Box, IconButton, Menu, MenuItem, Select, Toolbar, Typography } from "@mui/material";
+import { AppBar, Box, IconButton, Menu, MenuItem, Toolbar, Typography } from "@mui/material";
 import SplitFlapTitle from "./SplitFlapTitle.tsx";
 import ServiceAlertsModal from "./ServiceAlertsModal.tsx";
+import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
 
 // No @mui/icons-material dependency in this project; three bars is all a hamburger needs.
@@ -120,8 +120,6 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     const handleMenuOpen = (event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
     const handleMenuClose = () => setAnchorEl(null);
 
-    const handleSystemChange = (event: SelectChangeEvent) => onSystemChange(event.target.value);
-
     const toggleTheme = () => {
         const next = themeMode === "dark" ? "light" : "dark";
         setThemeMode(next);
@@ -191,49 +189,14 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     the link above stays sized to the title text instead of
                     stretching (and being clickable) across the whole header. */}
                 <Box sx={{ flexGrow: 1 }} />
-                {location.pathname === "/" && <Select
-                    value={selectedSystemId}
-                    onChange={handleSystemChange}
-                    size="small"
-                    variant="standard"
-                    disableUnderline
-                    inputProps={{ "aria-label": "Transit system" }}
-                    MenuProps={{ slotProps: { paper: { sx: menuPaperSx } } }}
-                    sx={{
-                        color: "var(--ink)",
-                        mr: { xs: 1, sm: 2 },
-                        maxWidth: { xs: 140, sm: 220 },
-                        fontFamily: "var(--font-display)",
-                        // Same recipe as the table's status pill background,
-                        // per your steer - a shrink-to-fit pill rather than a
-                        // fixed-width box, so the arrow sits right after the
-                        // name instead of pinned to a far-right edge. Root
-                        // becomes a flex row (select-value + icon) so the
-                        // icon, taken out of MUI's default absolute
-                        // positioning below, lands inline right after the
-                        // text and centers on the row via alignItems.
-                        display: "inline-flex",
-                        alignItems: "center",
-                        backgroundColor: "color-mix(in srgb, var(--ink-secondary) 20%, transparent)",
-                        borderRadius: "20px",
-                        "& .MuiSelect-icon": { color: "var(--coral)", position: "static", marginRight: "10px" },
-                        "& .MuiSelect-select": {
-                            textAlign: "left",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            py: "4px !important",
-                            pl: "12px !important",
-                            pr: "4px !important",
-                        },
-                    }}
-                >
-                    {systems.map((system) => (
-                        <MenuItem key={system.id} value={system.id} sx={menuItemSx}>
-                            {system.label}
-                        </MenuItem>
-                    ))}
-                </Select>}
+                {/* Below sm, this picker moves into the event feed's own
+                    mobile toolbar instead (see EventStreamComponent). */}
+                {location.pathname === "/" && <TransitSystemSelect
+                    systems={systems}
+                    selectedSystemId={selectedSystemId}
+                    onSystemChange={onSystemChange}
+                    sx={{ display: { xs: "none", sm: "inline-flex" }, mr: { sm: 2 }, maxWidth: 220 }}
+                />}
                 {location.pathname === "/" && <IconButton
                     onClick={() => setAlertsOpen(true)}
                     aria-label="Service alerts"

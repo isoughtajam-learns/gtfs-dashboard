@@ -1,6 +1,22 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Box } from "@mui/material";
 
+// Matches MUI's default `sm` breakpoint (600px), same as every other
+// responsive prop in this app - keeps the title's own size in step with
+// whatever breakpoint the rest of the header is reacting to.
+const SM_UP_QUERY = "(min-width: 600px)";
+
+function useIsSmUp(): boolean {
+    const [isSmUp, setIsSmUp] = useState(() => window.matchMedia(SM_UP_QUERY).matches);
+    useEffect(() => {
+        const mql = window.matchMedia(SM_UP_QUERY);
+        const listener = () => setIsSmUp(mql.matches);
+        mql.addEventListener("change", listener);
+        return () => mql.removeEventListener("change", listener);
+    }, []);
+    return isSmUp;
+}
+
 type SplitFlapTitleProps = {
     textA: string;
     textB: string;
@@ -32,6 +48,16 @@ export default function SplitFlapTitle({
     const [flipped, setFlipped] = useState(false);
     const containerRef = useRef<HTMLSpanElement>(null);
     const [width, setWidth] = useState<number | null>(null);
+    const isSmUp = useIsSmUp();
+    // These are the literal sizes actually rendered below - measurement has
+    // to use the exact same values, or the measured container ends up
+    // narrower than what's painted and the overflow spills into whatever
+    // sits next in the header (previously: fixed at "2rem"/"0.875rem"
+    // regardless of viewport, so at narrow widths the rendered text was far
+    // wider than its measured box and visually overlapped the transit
+    // system dropdown next to it).
+    const fontSizeA = isSmUp ? "2rem" : "1.3rem";
+    const fontSizeB = isSmUp ? "0.875rem" : "0.7rem";
 
     useEffect(() => {
         // Re-armed after every flip (not a fixed-cadence setInterval), since
@@ -53,8 +79,12 @@ export default function SplitFlapTitle({
         if (!el || !ctx) return;
 
         const computed = getComputedStyle(el);
-        const fontA = `${computed.fontStyle} ${computed.fontWeight} ${computed.fontSize} ${fontFamilyA ?? computed.fontFamily}`;
-        const fontB = `${computed.fontStyle} ${computed.fontWeight} ${computed.fontSize} ${fontFamilyB ?? computed.fontFamily}`;
+        // Font weight/size here must match what's actually rendered below
+        // (bold + fontSizeA for face A; ambient weight + fontSizeB for face
+        // B) rather than the container's own ambient style, or the measured
+        // width won't match the painted glyphs.
+        const fontA = `700 ${fontSizeA} ${fontFamilyA ?? computed.fontFamily}`;
+        const fontB = `${computed.fontStyle} ${computed.fontWeight} ${fontSizeB} ${fontFamilyB ?? computed.fontFamily}`;
 
         const measure = () => {
             ctx.font = fontA;
@@ -66,7 +96,7 @@ export default function SplitFlapTitle({
 
         measure();
         void document.fonts?.ready.then(measure);
-    }, [textA, textB, fontFamilyA, fontFamilyB]);
+    }, [textA, textB, fontFamilyA, fontFamilyB, fontSizeA, fontSizeB]);
 
     return (
         <Box
@@ -114,7 +144,7 @@ export default function SplitFlapTitle({
                         color: colorA,
                         fontWeight: "700",
                         fontSynthesis: "weight",
-                        fontSize: "2rem",
+                        fontSize: fontSizeA,
                     }}
                 >
                     {textA}
@@ -133,7 +163,7 @@ export default function SplitFlapTitle({
                         whiteSpace: "pre",
                         fontFamily: fontFamilyB,
                         color: colorB,
-                        fontSize: "0.875rem",
+                        fontSize: fontSizeB,
                     }}
                 >
                     {textB}

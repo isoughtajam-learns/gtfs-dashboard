@@ -67,7 +67,16 @@ function App() {
         <Grid container direction="row" spacing={2}>
           <Grid size={12} sx={{backgroundColor: "var(--bg)", height: "90%"}} spacing={2}>
             <Routes>
-              <Route path="/" element={<EventStreamComponent systemId={selectedSystemId} />} />
+              <Route
+                path="/"
+                element={
+                  <EventStreamComponent
+                    systemId={selectedSystemId}
+                    systems={systems}
+                    onSystemChange={handleSystemChange}
+                  />
+                }
+              />
               <Route path="/about" element={<About />} />
             </Routes>
           </Grid>
