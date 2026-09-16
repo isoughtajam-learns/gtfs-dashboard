@@ -34,17 +34,6 @@ data "aws_secretsmanager_secret" "app_secret_key" {
   name = "${var.app_name}/app-secret-key"
 }
 
-# Provisioned by hand via the Secrets Manager console, not by Terraform in
-# either stack - looked up by name rather than hardcoded, so this doesn't
-# depend on knowing the random suffix Secrets Manager appends to the ARN.
-data "aws_secretsmanager_secret" "tls_cert" {
-  name = "${var.app_name}/tls-cert"
-}
-
-data "aws_secretsmanager_secret" "tls_key" {
-  name = "${var.app_name}/tls-key"
-}
-
 locals {
   container_port = 8000
 
@@ -55,8 +44,6 @@ locals {
   frontend_secrets = [
     { name = "DATABASE_URL", valueFrom = data.aws_secretsmanager_secret.database_url.arn },
     { name = "SECRET_KEY", valueFrom = data.aws_secretsmanager_secret.app_secret_key.arn },
-    { name = "TLS_CERT", valueFrom = data.aws_secretsmanager_secret.tls_cert.arn },
-    { name = "TLS_KEY", valueFrom = data.aws_secretsmanager_secret.tls_key.arn },
   ]
 }
 
@@ -84,6 +71,26 @@ resource "aws_ecs_task_definition" "frontend" {
     cpu_architecture        = "ARM64"
   }
 
+  # irltransit.com's Let's Encrypt cert is obtained by certbot running on the
+  # EC2 host itself (NOT in this container - certbot lives outside deploy.sh's
+  # rebuild/replace cycle so the cert and Let's Encrypt's rate-limit state
+  # both survive every frontend redeploy - see deployment runbook). Host path
+  # == container path so certbot's live/<domain> -> ../../archive/<domain>
+  # relative symlinks resolve correctly inside the container's mount
+  # namespace, and so nginx's ssl_certificate paths need no translation.
+  volume {
+    name      = "letsencrypt"
+    host_path = "/etc/letsencrypt"
+  }
+
+  # ACME HTTP-01 challenge webroot: certbot (host) writes challenge files
+  # here, nginx (container) serves them read-only. Separate volume from
+  # "letsencrypt" above - disposable scratch space, not the cert material.
+  volume {
+    name      = "acme-challenge"
+    host_path = "/var/www/certbot"
+  }
+
   container_definitions = jsonencode([
     {
       name              = "frontend"
@@ -108,11 +115,15 @@ resource "aws_ecs_task_definition" "frontend" {
       # dynamic proxy_pass needs Docker's embedded DNS (127.0.0.11), which only
       # exists in bridge-mode containers - not present under host networking.
       environment = [{ name = "BACKEND_URL", value = "http://127.0.0.1:${local.container_port}" }]
-      # TLS_CERT/TLS_KEY land as env vars; the image's own entrypoint script
-      # (see this repo's Dockerfile) writes them to files and enables the 443
-      # listener only when both are present, so this same image still works
-      # unmodified for local HTTP-only dev.
-      secrets = local.frontend_secrets
+      secrets     = local.frontend_secrets
+      # The image's own entrypoint script (see this repo's Dockerfile)
+      # enables the 443 listener only once the Let's Encrypt cert files are
+      # actually present on the mounted "letsencrypt" volume, so this same
+      # image still works unmodified for local HTTP-only dev.
+      mountPoints = [
+        { sourceVolume = "letsencrypt", containerPath = "/etc/letsencrypt", readOnly = true },
+        { sourceVolume = "acme-challenge", containerPath = "/var/www/certbot", readOnly = true },
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
