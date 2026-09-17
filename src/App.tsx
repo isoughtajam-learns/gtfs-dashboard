@@ -40,11 +40,15 @@ function App() {
         if (cancelled) return;
         setSystems(fetched);
         // The stored id might reference a system that's disappeared since
-        // last visit - fall back to the first one rather than staying on
-        // an id nothing in the current list matches.
-        setSelectedSystemId((current) =>
-          current && fetched.some((s) => s.id === current) ? current : fetched[0]?.id || ""
-        );
+        // last visit - fall back to a default rather than staying on an id
+        // nothing in the current list matches. BART is the preferred
+        // default (first-ever visit, or a stored system that's gone); if
+        // it's ever missing from the feed, fall back to whatever's first.
+        setSelectedSystemId((current) => {
+          if (current && fetched.some((s) => s.id === current)) return current;
+          const fallback = fetched.find((s) => s.id === "BART") ?? fetched[0];
+          return fallback?.id || "";
+        });
       })
       .catch((error: unknown) => {
         console.error("Failed to load transit systems:", error);
