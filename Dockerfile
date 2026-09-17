@@ -49,9 +49,10 @@ RUN rm -rf /usr/share/nginx/html/*
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Staged outside /etc/nginx/templates/ so it's not auto-processed; promoted
-# there at container startup only when TLS_CERT/TLS_KEY are actually present
-# (see docker-entrypoint.d/15-enable-tls.sh), so an image without those env
-# vars set behaves exactly as it did before TLS support existed.
+# there at container startup only when the Let's Encrypt cert files are
+# actually present on the mounted "letsencrypt" volume (see
+# docker-entrypoint.d/15-enable-tls.sh), so an image running without that
+# mount (e.g. local dev) behaves exactly as it did before TLS support existed.
 COPY nginx.ssl.conf.template /etc/nginx/ssl.conf.template.available
 COPY docker-entrypoint.d/15-enable-tls.sh /docker-entrypoint.d/15-enable-tls.sh
 RUN chmod +x /docker-entrypoint.d/15-enable-tls.sh
@@ -59,8 +60,8 @@ RUN chmod +x /docker-entrypoint.d/15-enable-tls.sh
 # Copy the build output from the build stage to nginx's web root
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Expose port 80 and 443; the 443 listener only comes up if the TLS
-# env vars are present at startup (see docker-entrypoint.d/15-enable-tls.sh)
+# Expose port 80 and 443; the 443 listener only comes up if the Let's
+# Encrypt cert files are present at startup (see docker-entrypoint.d/15-enable-tls.sh)
 EXPOSE 80 443
 
 # Start nginx

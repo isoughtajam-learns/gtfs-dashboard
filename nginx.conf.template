@@ -38,6 +38,16 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # ACME HTTP-01 challenge for the Let's Encrypt cert (see
+    # docker-entrypoint.d/15-enable-tls.sh and deployment/main.tf's
+    # "acme-challenge" volume). Safe to ship unconditionally: an empty or
+    # missing webroot just 404s, it doesn't crash nginx the way a missing
+    # ssl_certificate file on the 443 side would.
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
     # Serve static files and fallback to index.html for React Router
     location / {
         try_files $uri $uri/ /index.html;

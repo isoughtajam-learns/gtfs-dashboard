@@ -5,15 +5,16 @@
 # since promoting ssl.conf.template below needs to happen first for that
 # script to pick it up.
 #
-# TLS_CERT/TLS_KEY only exist as env vars in the production ECS task (see
-# ../gtfs-realtime's deployment/main.tf, frontend_secrets) - local dev and
-# any other environment without them get exactly the pre-TLS behavior, since
-# the 443 server block never gets promoted into /etc/nginx/templates/ at all.
+# The cert is obtained by certbot running on the EC2 host itself, outside
+# this container - see ../deployment/main.tf's "letsencrypt" volume and the
+# deployment runbook for the one-time SSH/certbot setup. /etc/letsencrypt is
+# bind-mounted read-only from the host, so a container boot before certbot's
+# first successful `certonly` run just skips the 443 block below and serves
+# HTTP-only - the same graceful-skip behavior this script has always had,
+# and exactly what local dev (no such mount) gets too.
 set -e
 
-if [ -n "$TLS_CERT" ] && [ -n "$TLS_KEY" ]; then
-    mkdir -p /etc/nginx/certs
-    printf '%s' "$TLS_CERT" > /etc/nginx/certs/origin.pem
-    printf '%s' "$TLS_KEY" > /etc/nginx/certs/origin.key
+CERT_DIR="/etc/letsencrypt/live/irltransit.com"
+if [ -f "$CERT_DIR/fullchain.pem" ] && [ -f "$CERT_DIR/privkey.pem" ]; then
     cp /etc/nginx/ssl.conf.template.available /etc/nginx/templates/ssl.conf.template
 fi
