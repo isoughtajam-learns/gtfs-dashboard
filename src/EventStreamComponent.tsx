@@ -271,6 +271,14 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const [messages, setMessages] = useState<StreamedUpdate[]>([]);
     const [connected, setConnected] = useState(false);
+    // True once this system's poll cycle (30s - see the backend's
+    // transit_feed()) has had a fair chance to produce at least one event.
+    // A system with genuinely zero active trips right now (e.g. NY Waterway
+    // overnight) never emits a single SSE event, so there's no server-side
+    // "empty poll" signal to wait for instead of a timer - without this,
+    // that state is indistinguishable from "still loading" and the spinner
+    // never goes away. Reset on every system switch.
+    const [settled, setSettled] = useState(false);
     // A ref, not an effect-local counter: it has to outlive reconnects and StrictMode's
     // double-mount, both of which would otherwise restart numbering into a live list.
     const seqRef = useRef(0);
@@ -371,11 +379,16 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
 
         // Switching systems starts a fresh window rather than mixing feeds.
         setMessages([]);
+        setSettled(false);
 
         let eventSource: EventSource | null = null;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
         let attempt = 0;
         let disposed = false;
+
+        // Longer than the backend's own 30s poll cadence plus a buffer for
+        // connection/first-poll latency - see the `settled` state comment above.
+        const settleTimer = setTimeout(() => setSettled(true), 35_000);
 
         // Relative so it resolves against whatever host serves the app: nginx proxies
         // /api/ in the container, Vite's dev server proxies it locally.
@@ -432,6 +445,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         return () => {
             disposed = true;
             clearTimeout(retryTimer);
+            clearTimeout(settleTimer);
             eventSource?.close();
         };
     }, [systemId]);
@@ -463,35 +477,140 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 </Box>
             )}
 
-            { messages.length === 0 ? (
-                // Covers both the initial connect and a system switch (which
-                // clears messages) - gone the moment the first SSE event for
-                // this system lands, regardless of connection state.
-                <Box
-                    role="status"
-                    aria-live="polite"
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 1.5,
-                        py: 8,
-                    }}
-                >
-                    {/* "Train Loader" by Radhikakpor (lottiefiles.com/radhikakpr),
-                        credited in About.tsx. Paused on its first frame rather
-                        than looping when the user prefers reduced motion. */}
-                    <Lottie
-                        src={trainLoaderAnimation}
-                        loop={!prefersReducedMotion}
-                        autoplay={!prefersReducedMotion}
-                        style={{ width: 160, height: 120 }}
-                    />
-                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
-                        Loading arrivals&hellip;
+            {/* Below sm: chevron toggle + transit system picker (the page
+                header hides its own copy at this width) + expandable filter
+                pills. Always visible, independent of whether this system
+                currently has any data - previously nested inside the
+                messages.length===0 branch below, which meant a user with no
+                events yet (loading, or a system with none right now) had no
+                way to switch systems on mobile at all. */}
+            <Box sx={{ display: { xs: "block", sm: "none" }, borderBottom: "1px solid var(--hairline)" }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: 2, py: 1.5 }}>
+                    <Box
+                        component="button"
+                        onClick={() => setMobileFiltersExpanded((prev) => !prev)}
+                        aria-label={mobileFiltersExpanded ? "Hide column filters" : "Show column filters"}
+                        aria-expanded={mobileFiltersExpanded}
+                        sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "0.75rem",
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            fontWeight: 600,
+                            color: anyColumnActive ? "var(--coral)" : "var(--ink-secondary)",
+                            backgroundColor: "transparent",
+                            border: "1px solid var(--hairline)",
+                            borderRadius: "20px",
+                            px: 1.25,
+                            py: 0.5,
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            "& svg": {
+                                transition: "transform 150ms ease",
+                                transform: mobileFiltersExpanded ? "rotate(180deg)" : "none",
+                            },
+                        }}
+                    >
+                        Filters
+                        <ChevronDownIcon />
                     </Box>
+                    <TransitSystemSelect
+                        systems={systems}
+                        selectedSystemId={systemId}
+                        onSystemChange={onSystemChange}
+                        sx={{ minWidth: 0 }}
+                    />
                 </Box>
+                {mobileFiltersExpanded && (
+                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, px: 2, pb: 1.5 }}>
+                        {(["trip_headsign", "stop_name", "next"] as SortField[]).map((field) => (
+                            <Box
+                                key={field}
+                                component="button"
+                                onClick={openHeaderMenu(field)}
+                                aria-label={`Sort or filter ${COLUMN_LABELS[field]} column`}
+                                sx={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 0.5,
+                                    fontFamily: "var(--font-mono)",
+                                    fontSize: "0.75rem",
+                                    letterSpacing: "0.08em",
+                                    textTransform: "uppercase",
+                                    fontWeight: 600,
+                                    color: isColumnActive(field) ? "var(--coral)" : "var(--ink-secondary)",
+                                    backgroundColor: "transparent",
+                                    border: "1px solid var(--hairline)",
+                                    borderRadius: "20px",
+                                    px: 1.25,
+                                    py: 0.5,
+                                    cursor: "pointer",
+                                }}
+                            >
+                                { COLUMN_LABELS[field] }
+                                <FilterIcon />
+                            </Box>
+                        ))}
+                    </Box>
+                )}
+            </Box>
+
+            { messages.length === 0 ? (
+                settled ? (
+                    // Confirmed, not just "haven't heard back yet": this
+                    // system's poll cycle had a fair chance (see the
+                    // `settled` state) and produced nothing - a real system
+                    // state (e.g. NY Waterway overnight), not a bug.
+                    <Box
+                        role="status"
+                        aria-live="polite"
+                        sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 1.5,
+                            py: 8,
+                        }}
+                    >
+                        <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                            No active trips right now
+                        </Box>
+                    </Box>
+                ) : (
+                    // Covers both the initial connect and a system switch
+                    // (which clears messages) - gone the moment the first SSE
+                    // event for this system lands, or the settle timer
+                    // expires with nothing to show (see above).
+                    <Box
+                        role="status"
+                        aria-live="polite"
+                        sx={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 1.5,
+                            py: 8,
+                        }}
+                    >
+                        {/* "Train Loader" by Radhikakpor (lottiefiles.com/radhikakpr),
+                            credited in About.tsx. Paused on its first frame rather
+                            than looping when the user prefers reduced motion. */}
+                        <Lottie
+                            src={trainLoaderAnimation}
+                            loop={!prefersReducedMotion}
+                            autoplay={!prefersReducedMotion}
+                            style={{ width: 160, height: 120 }}
+                        />
+                        <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                            Loading arrivals&hellip;
+                        </Box>
+                    </Box>
+                )
             ) : (
             <>
             {/* sm and up: the full table. Below sm it doesn't degrade
@@ -587,86 +706,10 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             </TableContainer>
 
             {/* Below sm: one stacked card per trip instead of table rows.
-                A chevron toggle expands this same box downward into a
-                second row holding the three column pills (each opening the
-                same per-column headerMenu the desktop table uses), rather
-                than always taking up space; collapsed, the freed room holds
-                the transit system picker that the page header hides at this
-                width. */}
+                The toolbar (chevron/filters/transit picker) itself now lives
+                above, outside this branch, so it stays visible even with no
+                data yet. */}
             <Box sx={{ display: { xs: "block", sm: "none" } }}>
-                <Box sx={{ borderBottom: "1px solid var(--hairline)" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, px: 2, py: 1.5 }}>
-                        <Box
-                            component="button"
-                            onClick={() => setMobileFiltersExpanded((prev) => !prev)}
-                            aria-label={mobileFiltersExpanded ? "Hide column filters" : "Show column filters"}
-                            aria-expanded={mobileFiltersExpanded}
-                            sx={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 0.5,
-                                fontFamily: "var(--font-mono)",
-                                fontSize: "0.75rem",
-                                letterSpacing: "0.08em",
-                                textTransform: "uppercase",
-                                fontWeight: 600,
-                                color: anyColumnActive ? "var(--coral)" : "var(--ink-secondary)",
-                                backgroundColor: "transparent",
-                                border: "1px solid var(--hairline)",
-                                borderRadius: "20px",
-                                px: 1.25,
-                                py: 0.5,
-                                cursor: "pointer",
-                                flexShrink: 0,
-                                "& svg": {
-                                    transition: "transform 150ms ease",
-                                    transform: mobileFiltersExpanded ? "rotate(180deg)" : "none",
-                                },
-                            }}
-                        >
-                            Filters
-                            <ChevronDownIcon />
-                        </Box>
-                        <TransitSystemSelect
-                            systems={systems}
-                            selectedSystemId={systemId}
-                            onSystemChange={onSystemChange}
-                            sx={{ minWidth: 0 }}
-                        />
-                    </Box>
-                    {mobileFiltersExpanded && (
-                        <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, px: 2, pb: 1.5 }}>
-                            {(["trip_headsign", "stop_name", "next"] as SortField[]).map((field) => (
-                                <Box
-                                    key={field}
-                                    component="button"
-                                    onClick={openHeaderMenu(field)}
-                                    aria-label={`Sort or filter ${COLUMN_LABELS[field]} column`}
-                                    sx={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: 0.5,
-                                        fontFamily: "var(--font-mono)",
-                                        fontSize: "0.75rem",
-                                        letterSpacing: "0.08em",
-                                        textTransform: "uppercase",
-                                        fontWeight: 600,
-                                        color: isColumnActive(field) ? "var(--coral)" : "var(--ink-secondary)",
-                                        backgroundColor: "transparent",
-                                        border: "1px solid var(--hairline)",
-                                        borderRadius: "20px",
-                                        px: 1.25,
-                                        py: 0.5,
-                                        cursor: "pointer",
-                                    }}
-                                >
-                                    { COLUMN_LABELS[field] }
-                                    <FilterIcon />
-                                </Box>
-                            ))}
-                        </Box>
-                    )}
-                </Box>
                 {visibleMessages.map((message) => (
                     <Box
                         key={message.seq}
