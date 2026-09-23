@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactElement } from 'react';
-import {Box, Checkbox, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
+import {Box, Checkbox, CircularProgress, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
-import { Lottie } from "lottie-react";
-import trainLoaderAnimation from "./assets/train-loader.json";
 import TripDetailCard from "./TripDetailCard.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
@@ -266,9 +264,6 @@ type EventStreamComponentProps = {
 };
 
 export default function EventStreamComponent({ systemId, systems, onSystemChange }: EventStreamComponentProps) {
-    // Static per session, not worth a matchMedia change-listener - gates
-    // whether the loading animation below plays or just sits on its first frame.
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const [messages, setMessages] = useState<StreamedUpdate[]>([]);
     const [connected, setConnected] = useState(false);
     // True once this system's poll cycle (30s - see the backend's
@@ -597,15 +592,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                             py: 8,
                         }}
                     >
-                        {/* "Train Loader" by Radhikakpor (lottiefiles.com/radhikakpr),
-                            credited in About.tsx. Paused on its first frame rather
-                            than looping when the user prefers reduced motion. */}
-                        <Lottie
-                            src={trainLoaderAnimation}
-                            loop={!prefersReducedMotion}
-                            autoplay={!prefersReducedMotion}
-                            style={{ width: 160, height: 120 }}
-                        />
+                        <CircularProgress sx={{ color: "var(--coral)" }} />
                         <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
                             Loading arrivals&hellip;
                         </Box>
