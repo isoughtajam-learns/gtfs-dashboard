@@ -66,6 +66,10 @@ export default function About() {
                     <Box component="a" href="https://mobilitydatabase.org" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Mobility Database
                     </Box>
+                    . SF Muni (SF-MTA) and BART data provided by{" "}
+                    <Box component="a" href="https://511.org/open-data/transit" target="_blank" rel="noopener noreferrer" sx={linkSx}>
+                        511.org
+                    </Box>
                     . Built by {" "}
                     <Box component="a" href="https://gautamjoshi.com" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Gautam Joshi
