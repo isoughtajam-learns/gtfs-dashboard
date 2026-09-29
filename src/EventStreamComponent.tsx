@@ -6,6 +6,7 @@ import { keyframes } from "@emotion/react";
 import TripDetailCard from "./TripDetailCard.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
+import { sfMtaRouteLabel } from "./lineLabel.ts";
 
 type TripUpdate = {
     trip_id: string;
@@ -70,35 +71,12 @@ const COLUMN_LABELS: Record<SortField, string> = {
     next: "Next",
 };
 
-// SF-MTA's route_long_name arrives ALL CAPS from schedule data (e.g.
-// "VAN NESS-MISSION", "MARKET & WHARVES") - title-cases each
-// whitespace/hyphen-separated word so it reads like real signage
-// ("Van Ness-Mission") rather than shouting.
-const titleCase = (value: string): string =>
-    value
-        .toLowerCase()
-        .split(" ")
-        .map((word) => word.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-"))
-        .join(" ");
-
-// SF-MTA colloquially - and on a lot of real signage - refers to lines by
-// combining route_short_name + route_long_name (e.g. "N Judah", "38R Geary
-// Rapid") rather than trip_headsign's destination-based text. Unique to
-// SF-MTA among the systems this app serves (confirmed live: BART's own
-// route_short_name/route_long_name are internal color-line codes and
-// verbose from-to descriptions, not rider-facing). Explicitly scoped to
-// SF-MTA rather than "any system with both fields set", so another system
-// populating those fields differently doesn't silently start combining too.
-// Falls back to trip_headsign whenever either field is missing - true for
-// roughly half of SF-MTA's own trips (not every trip's route resolves in
-// schedule data), and for every other system, where trip_headsign is
-// already the right display text.
-const lineLabel = (systemId: string, message: StreamedUpdate): string | null => {
-    if (systemId === "SF-MTA" && message.route_short_name && message.route_long_name) {
-        return `${message.route_short_name} ${titleCase(message.route_long_name)}`;
-    }
-    return message.trip_headsign;
-};
+// Line column's own fallback (trip_headsign) for whenever sfMtaRouteLabel
+// returns null - shared with the filter checklist/sort below, and distinct
+// from TripDetailCard's own fallback for the same shared helper (see
+// lineLabel.ts's own comment on why that differs per call site).
+const lineLabel = (systemId: string, message: StreamedUpdate): string | null =>
+    sfMtaRouteLabel(systemId, message.route_short_name, message.route_long_name) ?? message.trip_headsign;
 
 // GTFS trip_headsign is nullable (see the Line cell's own null check below);
 // group those rows under one filterable bucket rather than dropping them.
