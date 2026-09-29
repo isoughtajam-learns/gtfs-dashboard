@@ -18,6 +18,11 @@ type TripUpdate = {
     vehicle: string;
     color?: string | null;
     text_color?: string | null;
+    // SF-MTA-only fields (see lineLabel below) - absent or null for every
+    // other system, and for a real fraction of SF-MTA's own trips whose
+    // route doesn't resolve in schedule data.
+    route_short_name?: string | null;
+    route_long_name?: string | null;
 };
 
 // `seq` is client-assigned at insert/update time, since nothing in the raw
@@ -65,10 +70,40 @@ const COLUMN_LABELS: Record<SortField, string> = {
     next: "Next",
 };
 
+// SF-MTA's route_long_name arrives ALL CAPS from schedule data (e.g.
+// "VAN NESS-MISSION", "MARKET & WHARVES") - title-cases each
+// whitespace/hyphen-separated word so it reads like real signage
+// ("Van Ness-Mission") rather than shouting.
+const titleCase = (value: string): string =>
+    value
+        .toLowerCase()
+        .split(" ")
+        .map((word) => word.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-"))
+        .join(" ");
+
+// SF-MTA colloquially - and on a lot of real signage - refers to lines by
+// combining route_short_name + route_long_name (e.g. "N Judah", "38R Geary
+// Rapid") rather than trip_headsign's destination-based text. Unique to
+// SF-MTA among the systems this app serves (confirmed live: BART's own
+// route_short_name/route_long_name are internal color-line codes and
+// verbose from-to descriptions, not rider-facing). Explicitly scoped to
+// SF-MTA rather than "any system with both fields set", so another system
+// populating those fields differently doesn't silently start combining too.
+// Falls back to trip_headsign whenever either field is missing - true for
+// roughly half of SF-MTA's own trips (not every trip's route resolves in
+// schedule data), and for every other system, where trip_headsign is
+// already the right display text.
+const lineLabel = (systemId: string, message: StreamedUpdate): string | null => {
+    if (systemId === "SF-MTA" && message.route_short_name && message.route_long_name) {
+        return `${message.route_short_name} ${titleCase(message.route_long_name)}`;
+    }
+    return message.trip_headsign;
+};
+
 // GTFS trip_headsign is nullable (see the Line cell's own null check below);
 // group those rows under one filterable bucket rather than dropping them.
 const NO_LINE = "(No line)";
-const lineFilterValue = (message: StreamedUpdate) => message.trip_headsign ?? NO_LINE;
+const lineFilterValue = (systemId: string, message: StreamedUpdate) => lineLabel(systemId, message) ?? NO_LINE;
 
 // Sort/filter state persists across reloads (and across switching transit
 // systems, matching this app's existing in-session behavior of not
@@ -165,10 +200,11 @@ const bodyCellSx = {
 // Shared between the table (sm+) and card (xs) layouts so the two views
 // can't visually drift apart - each returns just the cell's inner content,
 // let the caller wrap it in a <TableCell> or a plain <Box>.
-function HeadsignChip({ message }: { message: StreamedUpdate }) {
-    if (message.trip_headsign == null) return null;
+function HeadsignChip({ systemId, message }: { systemId: string; message: StreamedUpdate }) {
+    const label = lineLabel(systemId, message);
+    if (label == null) return null;
     return (
-        <Tooltip title={message.trip_headsign}>
+        <Tooltip title={label}>
             <Box
                 component="span"
                 sx={{
@@ -185,7 +221,7 @@ function HeadsignChip({ message }: { message: StreamedUpdate }) {
                     maxWidth: "100%",
                 }}
             >
-                { message.trip_headsign }
+                { label }
             </Box>
         </Tooltip>
     );
@@ -318,13 +354,13 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     // Recomputed as messages stream in/age out, so the checklist always
     // reflects what's actually visible right now.
     const distinctValues: Record<FilterField, string[]> = useMemo(() => ({
-        trip_headsign: Array.from(new Set(messages.map(lineFilterValue))).sort(),
+        trip_headsign: Array.from(new Set(messages.map((m) => lineFilterValue(systemId, m)))).sort(),
         stop_name: Array.from(new Set(messages.map((m) => m.stop_name))).sort(),
-    }), [messages]);
+    }), [messages, systemId]);
 
     const visibleMessages = useMemo(() => {
         const filtered = messages.filter((m) =>
-            !excludedValues.trip_headsign.has(lineFilterValue(m)) &&
+            !excludedValues.trip_headsign.has(lineFilterValue(systemId, m)) &&
             !excludedValues.stop_name.has(m.stop_name)
         );
         if (!sort) return filtered;
@@ -332,12 +368,12 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             const cmp = sort.field === "next"
                 ? a.next - b.next
                 : sort.field === "trip_headsign"
-                    ? lineFilterValue(a).localeCompare(lineFilterValue(b))
+                    ? lineFilterValue(systemId, a).localeCompare(lineFilterValue(systemId, b))
                     : a.stop_name.localeCompare(b.stop_name);
             return sort.direction === "asc" ? cmp : -cmp;
         });
         return sorted;
-    }, [messages, excludedValues, sort]);
+    }, [messages, excludedValues, sort, systemId]);
 
     const openHeaderMenu = (field: SortField) => (event: MouseEvent<HTMLElement>) =>
         setHeaderMenu({ anchorEl: event.currentTarget, field });
@@ -675,7 +711,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 }}
                             >
                                 <TableCell component="th" scope="row" sx={bodyCellSx}>
-                                    <HeadsignChip message={message} />
+                                    <HeadsignChip systemId={systemId} message={message} />
                                 </TableCell>
                                 <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>
                                 <TableCell align="right" sx={bodyCellSx}>
@@ -729,7 +765,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 flex-grow gives it, that leftover space would center it
                                 instead of pinning it to the left edge. */}
                             <Box sx={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textAlign: "left" }}>
-                                <HeadsignChip message={message} />
+                                <HeadsignChip systemId={systemId} message={message} />
                             </Box>
                             <StatusPill message={message} compact />
                         </Box>
