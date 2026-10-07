@@ -36,3 +36,9 @@ deployment/*.tfstate
 deployment/*.tfstate.*
 deployment/tfplan*
 deployment/*.tfvars
+.aider*
+.env
+
+.mcp.json
+.claude/
+
