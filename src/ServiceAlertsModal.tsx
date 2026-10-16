@@ -160,6 +160,17 @@ const alertMetaTextSx = {
     fontSize: "0.75rem",
     color: "var(--ink-secondary)",
 };
+// Cause/effect values of "unknown" aren't meaningful information - they're
+// the source admitting it doesn't know - so they're deliberately rendered
+// lighter and dimmer than a real cause/effect, instead of sharing
+// alertBodyTextSx's full-weight, full-ink styling.
+const alertUnknownValueSx = {
+    ...alertBodyTextSx,
+    fontWeight: 300,
+    color: "var(--ink-secondary)",
+};
+const UNKNOWN_CAUSE = "UNKNOWN_CAUSE";
+const UNKNOWN_EFFECT = "UNKNOWN_EFFECT";
 
 const sortFilterMenuPaperSx = {
     backgroundColor: "var(--surface-raised)",
@@ -190,11 +201,11 @@ function CloseIcon() {
     );
 }
 
-function HeaderField({ label, value }: { label: string; value: string }) {
+function HeaderField({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
     return (
         <Box>
             <Box sx={alertHeaderLabelSx}>{ label }</Box>
-            <Box sx={alertBodyTextSx}>{ value }</Box>
+            <Box sx={muted ? alertUnknownValueSx : alertBodyTextSx}>{ value }</Box>
         </Box>
     );
 }
@@ -244,8 +255,8 @@ function AlertCard({ alert }: { alert: ServiceAlert }) {
                     width: { sm: 180 },
                 }}
             >
-                <HeaderField label="Cause" value={formatEnumLabel(alert.cause)} />
-                <HeaderField label="Effect" value={formatEnumLabel(alert.effect)} />
+                <HeaderField label="Cause" value={formatEnumLabel(alert.cause)} muted={alert.cause === UNKNOWN_CAUSE} />
+                <HeaderField label="Effect" value={formatEnumLabel(alert.effect)} muted={alert.effect === UNKNOWN_EFFECT} />
                 <HeaderField label="Severity" value={alert.severity_level ? formatEnumLabel(alert.severity_level) : "—"} />
             </Box>
 

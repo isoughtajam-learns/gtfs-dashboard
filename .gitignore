@@ -42,3 +42,5 @@ deployment/*.tfvars
 .mcp.json
 .claude/
 
+.env
+.env
