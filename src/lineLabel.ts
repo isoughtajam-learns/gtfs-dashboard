@@ -1,7 +1,11 @@
-// SF-MTA's route_long_name arrives ALL CAPS from schedule data (e.g.
-// "VAN NESS-MISSION", "MARKET & WHARVES") - title-cases each
+// Some systems' route_long_name arrives ALL CAPS from schedule data (e.g.
+// SF-MTA's "VAN NESS-MISSION", "MARKET & WHARVES") - title-cases each
 // whitespace/hyphen-separated word so it reads like real signage
-// ("Van Ness-Mission") rather than shouting.
+// ("Van Ness-Mission") rather than shouting. Only applied when the whole
+// string is shouting (see isShouting below) - most systems' long_names
+// already use normal/mixed case (including real abbreviations like "BART"
+// or "MLK" embedded in an otherwise-normal string), and running this
+// unconditionally would mangle those into "Bart"/"Mlk".
 const titleCase = (value: string): string =>
     value
         .toLowerCase()
@@ -9,29 +13,37 @@ const titleCase = (value: string): string =>
         .map((word) => word.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-"))
         .join(" ");
 
-// SF-MTA colloquially - and on a lot of real signage - refers to lines by
-// combining route_short_name + route_long_name (e.g. "N Judah", "38R Geary
-// Rapid"). Unique to SF-MTA among the systems this app serves (confirmed
-// live: BART's own route_short_name/route_long_name are internal
-// color-line codes and verbose from-to descriptions, not rider-facing).
-// Explicitly scoped to SF-MTA rather than "any system with both fields
-// set", so another system populating those fields differently doesn't
-// silently start combining too.
+const isShouting = (value: string): boolean =>
+    value === value.toUpperCase() && value !== value.toLowerCase();
+
+// Confirmed live across every active Bay Area system (IRL-13/IRL-22): the
+// clean, system-agnostic split is whether route_short_name literally equals
+// route_id, not which system or GTFS route_type (bus/rail/ferry/etc.) a
+// route belongs to.
 //
-// Returns null whenever either field is missing (true for roughly half of
-// SF-MTA's own trips - not every trip's route resolves in schedule data) or
-// for every other system - callers supply their own fallback for that
-// case, since what's appropriate differs by where this is displayed: the
-// event feed's Line column falls back to trip_headsign (see
-// EventStreamComponent's lineLabel), while TripDetailCard's route badge
-// falls back to the raw route_long_name it already shows today.
-export function sfMtaRouteLabel(
-    systemId: string,
+// route_short_name == route_id (every route, in 8 of 9 systems, including
+// SF-MTA's bus/rail/cable-car routes alike and VTA's color-named light
+// rail lines) means short_name genuinely identifies the route the way
+// real signage does - concatenating short_name + long_name reads like
+// "N Judah", "38R Geary Rapid", "72 CCC - San Pablo", "Blue Line Baypointe
+// - Santa Teresa".
+//
+// route_short_name != route_id (BART, uniquely among what's been seen) means
+// short_name is an internal color+direction grouping code riders never see
+// (e.g. "Yellow-S" vs route_id "1") - long_name alone already reads like
+// real BART signage ("Berryessa/North San Jose to Daly City"), and
+// concatenating would just inject an internal code into the display.
+// Returns null in that case; callers supply their own fallback (trip_headsign
+// for the event feed's Line column, the raw route_long_name for
+// TripDetailCard's badge - see each call site).
+export function routeLineLabel(
+    routeId: string | null | undefined,
     routeShortName: string | null | undefined,
     routeLongName: string | null | undefined
 ): string | null {
-    if (systemId === "SF-MTA" && routeShortName && routeLongName) {
-        return `${routeShortName} ${titleCase(routeLongName)}`;
+    if (!routeShortName || routeShortName !== routeId) {
+        return null;
     }
-    return null;
+    const longName = routeLongName && isShouting(routeLongName) ? titleCase(routeLongName) : routeLongName;
+    return longName ? `${routeShortName} ${longName}` : routeShortName;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Box, Dialog, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
 import { keyframes } from "@emotion/react";
-import { sfMtaRouteLabel } from "./lineLabel.ts";
+import { routeLineLabel } from "./lineLabel.ts";
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
 // raw feed value is not a valid CSS color. Falls back to theme tokens when absent.
@@ -176,13 +176,14 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
         );
     }, [detail]);
 
-    // SF-MTA's colloquial "N Judah"/"38R Geary Rapid" form (see lineLabel.ts)
-    // when it applies; otherwise the raw route_long_name this badge has
-    // always shown (e.g. BART's "Millbrae/SF Int'l Airport SFO to
-    // Richmond" - genuinely different information from the title above it,
-    // not something sfMtaRouteLabel's own fallback would be right for here).
+    // The colloquial "N Judah"/"38R Geary Rapid"/"72 CCC - San Pablo" form
+    // (see lineLabel.ts) when it applies; otherwise the raw route_long_name
+    // this badge has always shown (e.g. BART's "Millbrae/SF Int'l Airport
+    // SFO to Richmond" - genuinely different information from the title
+    // above it, not something routeLineLabel's own fallback would be right
+    // for here).
     const routeBadgeLabel = detail
-        ? sfMtaRouteLabel(systemId, detail.route_short_name, detail.route_long_name) ?? detail.route_long_name
+        ? routeLineLabel(detail.route_id, detail.route_short_name, detail.route_long_name) ?? detail.route_long_name
         : null;
 
     return (

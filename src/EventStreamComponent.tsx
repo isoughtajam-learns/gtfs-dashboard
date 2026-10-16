@@ -6,7 +6,7 @@ import { keyframes } from "@emotion/react";
 import TripDetailCard from "./TripDetailCard.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
-import { sfMtaRouteLabel } from "./lineLabel.ts";
+import { routeLineLabel } from "./lineLabel.ts";
 
 type TripUpdate = {
     trip_id: string;
@@ -19,9 +19,9 @@ type TripUpdate = {
     vehicle: string;
     color?: string | null;
     text_color?: string | null;
-    // SF-MTA-only fields (see lineLabel below) - absent or null for every
-    // other system, and for a real fraction of SF-MTA's own trips whose
-    // route doesn't resolve in schedule data.
+    // Absent/null for a real fraction of trips whose route doesn't resolve
+    // in schedule data, regardless of system - see lineLabel below.
+    route_id?: string | null;
     route_short_name?: string | null;
     route_long_name?: string | null;
 };
@@ -71,17 +71,17 @@ const COLUMN_LABELS: Record<SortField, string> = {
     next: "Next",
 };
 
-// Line column's own fallback (trip_headsign) for whenever sfMtaRouteLabel
+// Line column's own fallback (trip_headsign) for whenever routeLineLabel
 // returns null - shared with the filter checklist/sort below, and distinct
 // from TripDetailCard's own fallback for the same shared helper (see
 // lineLabel.ts's own comment on why that differs per call site).
-const lineLabel = (systemId: string, message: StreamedUpdate): string | null =>
-    sfMtaRouteLabel(systemId, message.route_short_name, message.route_long_name) ?? message.trip_headsign;
+const lineLabel = (message: StreamedUpdate): string | null =>
+    routeLineLabel(message.route_id, message.route_short_name, message.route_long_name) ?? message.trip_headsign;
 
 // GTFS trip_headsign is nullable (see the Line cell's own null check below);
 // group those rows under one filterable bucket rather than dropping them.
 const NO_LINE = "(No line)";
-const lineFilterValue = (systemId: string, message: StreamedUpdate) => lineLabel(systemId, message) ?? NO_LINE;
+const lineFilterValue = (message: StreamedUpdate) => lineLabel(message) ?? NO_LINE;
 
 // Sort/filter state persists across reloads (and across switching transit
 // systems, matching this app's existing in-session behavior of not
@@ -178,8 +178,8 @@ const bodyCellSx = {
 // Shared between the table (sm+) and card (xs) layouts so the two views
 // can't visually drift apart - each returns just the cell's inner content,
 // let the caller wrap it in a <TableCell> or a plain <Box>.
-function HeadsignChip({ systemId, message }: { systemId: string; message: StreamedUpdate }) {
-    const label = lineLabel(systemId, message);
+function HeadsignChip({ message }: { message: StreamedUpdate }) {
+    const label = lineLabel(message);
     if (label == null) return null;
     return (
         <Tooltip title={label}>
@@ -332,13 +332,13 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     // Recomputed as messages stream in/age out, so the checklist always
     // reflects what's actually visible right now.
     const distinctValues: Record<FilterField, string[]> = useMemo(() => ({
-        trip_headsign: Array.from(new Set(messages.map((m) => lineFilterValue(systemId, m)))).sort(),
+        trip_headsign: Array.from(new Set(messages.map((m) => lineFilterValue(m)))).sort(),
         stop_name: Array.from(new Set(messages.map((m) => m.stop_name))).sort(),
-    }), [messages, systemId]);
+    }), [messages]);
 
     const visibleMessages = useMemo(() => {
         const filtered = messages.filter((m) =>
-            !excludedValues.trip_headsign.has(lineFilterValue(systemId, m)) &&
+            !excludedValues.trip_headsign.has(lineFilterValue(m)) &&
             !excludedValues.stop_name.has(m.stop_name)
         );
         if (!sort) return filtered;
@@ -346,12 +346,12 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             const cmp = sort.field === "next"
                 ? a.next - b.next
                 : sort.field === "trip_headsign"
-                    ? lineFilterValue(systemId, a).localeCompare(lineFilterValue(systemId, b))
+                    ? lineFilterValue(a).localeCompare(lineFilterValue(b))
                     : a.stop_name.localeCompare(b.stop_name);
             return sort.direction === "asc" ? cmp : -cmp;
         });
         return sorted;
-    }, [messages, excludedValues, sort, systemId]);
+    }, [messages, excludedValues, sort]);
 
     const openHeaderMenu = (field: SortField) => (event: MouseEvent<HTMLElement>) =>
         setHeaderMenu({ anchorEl: event.currentTarget, field });
@@ -689,7 +689,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 }}
                             >
                                 <TableCell component="th" scope="row" sx={bodyCellSx}>
-                                    <HeadsignChip systemId={systemId} message={message} />
+                                    <HeadsignChip message={message} />
                                 </TableCell>
                                 <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>
                                 <TableCell align="right" sx={bodyCellSx}>
@@ -743,7 +743,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 flex-grow gives it, that leftover space would center it
                                 instead of pinning it to the left edge. */}
                             <Box sx={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textAlign: "left" }}>
-                                <HeadsignChip systemId={systemId} message={message} />
+                                <HeadsignChip message={message} />
                             </Box>
                             <StatusPill message={message} compact />
                         </Box>
