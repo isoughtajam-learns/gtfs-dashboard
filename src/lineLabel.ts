@@ -13,8 +13,13 @@ const titleCase = (value: string): string =>
         .map((word) => word.split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-"))
         .join(" ");
 
+// Requires a space, not just "all uppercase" - a bare whole-string
+// abbreviation like "BART"/"SFO"/"VTA" is all-caps but isn't shouting
+// prose, and title-casing it would produce exactly the "Bart"/"Sfo"/"Vta"
+// mangling this function exists to avoid. Every real shouting long_name
+// seen (SF-MTA's "VAN NESS-MISSION", "MARKET & WHARVES") is multi-word.
 const isShouting = (value: string): boolean =>
-    value === value.toUpperCase() && value !== value.toLowerCase();
+    value.includes(" ") && value === value.toUpperCase() && value !== value.toLowerCase();
 
 // Confirmed live across every active Bay Area system (IRL-13/IRL-22): the
 // clean, system-agnostic split is whether route_short_name literally equals
