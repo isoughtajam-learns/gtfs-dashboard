@@ -874,6 +874,14 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             tripId={selectedTripId}
             onClose={() => setSelectedTripId(null)}
             onSwitchSystem={(transferSystemId) => {
+                // Only close the card when the switch will actually happen -
+                // App.tsx's handleSystemChange silently no-ops an id that
+                // isn't in `systems` (stale/unverified transfer data), and
+                // closing the card anyway would look like a successful
+                // switch when nothing happened. Same "systems hasn't loaded
+                // yet" leniency as handleSystemChange's own guard - an empty
+                // systems list means "unverifiable", not "invalid".
+                if (systems.length > 0 && !systems.some((s) => s.id === transferSystemId)) return;
                 onSystemChange(transferSystemId);
                 setSelectedTripId(null);
             }}

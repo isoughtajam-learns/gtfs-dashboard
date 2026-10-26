@@ -179,11 +179,15 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                     // back to a generic message for anything else (502 from
                     // an unreachable upstream source, etc.) or a body that
                     // isn't JSON at all.
-                    const detail = await res.json().then(
+                    // Named errorDetail, not detail - this scope is inside
+                    // the same component as the `detail` (TripDetail | null)
+                    // state variable below, and shadowing it here invited
+                    // confusion for a future edit in this same callback.
+                    const errorDetail = await res.json().then(
                         (body: { detail?: string }) => body.detail,
                         () => undefined
                     );
-                    throw new Error(detail ?? `Failed to load trip detail (${res.status})`);
+                    throw new Error(errorDetail ?? `Failed to load trip detail (${res.status})`);
                 }
                 return res.json();
             })

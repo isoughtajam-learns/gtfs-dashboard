@@ -42,8 +42,11 @@ const pillSx = {
 // also collapses entries down to one per base line name (direction suffix
 // stripped) - see dedupeByLine below.
 const DIRECTION_SUFFIX = /-[NSEW]$/i;
+// `||`, not `??` - an empty-string route_short_name should fall back to
+// route_id the same way null/undefined does, not collapse every such
+// transfer under the same blank key in dedupeByLine below.
 const baseLineName = (transfer: IntraSystemTransfer): string =>
-    (transfer.route_short_name ?? transfer.route_id).replace(DIRECTION_SUFFIX, "");
+    (transfer.route_short_name || transfer.route_id).replace(DIRECTION_SUFFIX, "");
 
 function dedupeByLine(transfers: IntraSystemTransfer[]): IntraSystemTransfer[] {
     const seen = new Map<string, IntraSystemTransfer>();
@@ -125,7 +128,7 @@ export default function TransferIndicators({
                     transfer.route_id;
                 if (compactIntra) {
                     return (
-                        <Tooltip key={transfer.route_id} title={`Transfer to ${baseLineName(transfer)}`}>
+                        <Tooltip key={`intra-${transfer.route_id}`} title={`Transfer to ${baseLineName(transfer)}`}>
                             <Box
                                 sx={{
                                     ...dotSx,
@@ -136,7 +139,7 @@ export default function TransferIndicators({
                     );
                 }
                 return (
-                    <Tooltip key={transfer.route_id} title={`Transfer to ${label}`}>
+                    <Tooltip key={`intra-${transfer.route_id}`} title={`Transfer to ${label}`}>
                         <Box
                             sx={{
                                 ...pillSx,
@@ -150,7 +153,10 @@ export default function TransferIndicators({
                 );
             })}
             {interSystemTransferSystems.map((transferSystemId) => (
-                <Tooltip key={transferSystemId} title={`Transfer to ${transferSystemId}`}>
+                // "inter-" prefix, matching the intra pills/dots above's
+                // "intra-" prefix - keeps the two key namespaces apart in
+                // case a route_id ever coincides with a system id string.
+                <Tooltip key={`inter-${transferSystemId}`} title={`Transfer to ${transferSystemId}`}>
                     <Box
                         component="button"
                         onClick={(event) => {

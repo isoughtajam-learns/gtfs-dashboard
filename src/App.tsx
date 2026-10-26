@@ -64,8 +64,15 @@ function App() {
   // here rather than trust it, so a stale/decommissioned system id in that
   // data can't land the app on an id nothing in `systems` matches (the
   // dropdown would show blank, and the feed would fail to connect).
+  //
+  // Only rejects once `systems` has actually loaded - `systems` starts
+  // empty while fetchTransitSystems() is still in flight (selectedSystemId
+  // itself is seeded synchronously from localStorage and handed to
+  // EventStreamComponent before that fetch resolves), and `systems.some`
+  // against an empty array would reject every id, including legitimate
+  // ones, during that window.
   const handleSystemChange = (systemId: string) => {
-    if (!systems.some((s) => s.id === systemId)) return;
+    if (systems.length > 0 && !systems.some((s) => s.id === systemId)) return;
     setSelectedSystemId(systemId);
     writeStoredSystemId(systemId);
   };
