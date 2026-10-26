@@ -57,7 +57,15 @@ function App() {
     return () => { cancelled = true; };
   }, []);
 
+  // Every other caller (TransitSystemSelect's dropdown) only ever passes an
+  // id drawn from `systems` itself, so it was always guaranteed valid - an
+  // inter-system transfer badge (see TransferIndicators.tsx) is the first
+  // caller passing an id straight from live trip/stop data instead. Guard
+  // here rather than trust it, so a stale/decommissioned system id in that
+  // data can't land the app on an id nothing in `systems` matches (the
+  // dropdown would show blank, and the feed would fail to connect).
   const handleSystemChange = (systemId: string) => {
+    if (!systems.some((s) => s.id === systemId)) return;
     setSelectedSystemId(systemId);
     writeStoredSystemId(systemId);
   };

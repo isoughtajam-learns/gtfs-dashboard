@@ -47,9 +47,12 @@ type TripStopDetail = {
     departure_delay: number | null;
     schedule_relationship: string;
     // Phase 3 transfers (see .claude/plans/development.md) - see
-    // TransferIndicators.tsx for how these render.
-    intra_system_transfers: IntraSystemTransfer[];
-    inter_system_transfer_systems: string[];
+    // TransferIndicators.tsx for how these render. Optional, like
+    // TripUpdate's equivalent fields in EventStreamComponent.tsx - every
+    // access below guards with `?? []` rather than trusting the backend to
+    // always attach them.
+    intra_system_transfers?: IntraSystemTransfer[];
+    inter_system_transfer_systems?: string[];
 };
 
 type TripDetail = {
@@ -356,8 +359,8 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                                                         <Box component="span">{ stop.stop_name ?? stop.stop_id }</Box>
                                                         <TransferIndicators
-                                                            intraSystemTransfers={stop.intra_system_transfers}
-                                                            interSystemTransferSystems={stop.inter_system_transfer_systems}
+                                                            intraSystemTransfers={stop.intra_system_transfers ?? []}
+                                                            interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
                                                             onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
                                                             compactIntra={systemId === "BART"}
                                                         />
@@ -414,11 +417,11 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                             used to sit inline next to the stop name, which
                                             cramped multi-transfer stops onto one line. Only
                                             rendered when there's something to show. */}
-                                        {(stop.intra_system_transfers.length > 0 || stop.inter_system_transfer_systems.length > 0) && (
+                                        {((stop.intra_system_transfers?.length ?? 0) > 0 || (stop.inter_system_transfer_systems?.length ?? 0) > 0) && (
                                             <Box sx={{ textAlign: "left", mt: 1 }}>
                                                 <TransferIndicators
-                                                    intraSystemTransfers={stop.intra_system_transfers}
-                                                    interSystemTransferSystems={stop.inter_system_transfer_systems}
+                                                    intraSystemTransfers={stop.intra_system_transfers ?? []}
+                                                    interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
                                                     onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
                                                     compactIntra={systemId === "BART"}
                                                 />
