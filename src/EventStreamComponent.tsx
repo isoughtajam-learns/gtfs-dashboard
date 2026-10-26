@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactElement } from 'react';
 import {Box, Checkbox, CircularProgress, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
 import TripDetailCard from "./TripDetailCard.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
@@ -47,7 +48,7 @@ const MAX_RETRY_DELAY_MS = 30_000;
 // inheriting it from the <Table>'s own sx: MUI's TableCell/TableHead
 // assert their own theme-driven font-family directly, which wins over
 // an ancestor's inherited value the way plain HTML/CSS wouldn't.
-const headCellSx = {
+const headCellSx: SxProps<Theme> = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.9rem",
     letterSpacing: "0.1em",

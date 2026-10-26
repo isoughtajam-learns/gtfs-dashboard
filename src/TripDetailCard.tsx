@@ -332,6 +332,7 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                         <TableCell sx={stopHeadCellSx}>Arrival</TableCell>
                                         <TableCell sx={stopHeadCellSx}>Arrival delay</TableCell>
                                         <TableCell sx={stopHeadCellSx}>Departure</TableCell>
+                                        <TableCell sx={stopHeadCellSx}>Departure delay</TableCell>
                                     </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -365,6 +366,7 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                                 <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatEpochSeconds(stop.arrival_time) }</TableCell>
                                                 <TableCell sx={isNext && isDelayed ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatDelay(stop.arrival_delay) }</TableCell>
                                                 <TableCell sx={stopBodyCellSx}>{ formatEpochSeconds(stop.departure_time) }</TableCell>
+                                                <TableCell sx={stopBodyCellSx}>{ formatDelay(stop.departure_delay) }</TableCell>
                                             </TableRow>
                                         );
                                     })}
@@ -422,9 +424,15 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                                 />
                                             </Box>
                                         )}
-                                        <Box sx={{ mt: 1 }}>
-                                            <Box sx={stopFieldLabelSx}>Departure</Box>
-                                            <Box sx={stopFieldValueSx}>{ formatEpochSeconds(stop.departure_time) }</Box>
+                                        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mt: 1 }}>
+                                            <Box>
+                                                <Box sx={stopFieldLabelSx}>Departure</Box>
+                                                <Box sx={stopFieldValueSx}>{ formatEpochSeconds(stop.departure_time) }</Box>
+                                            </Box>
+                                            <Box sx={{ textAlign: "right" }}>
+                                                <Box sx={stopFieldLabelSx}>Departure delay</Box>
+                                                <Box sx={stopFieldValueSx}>{ formatDelay(stop.departure_delay) }</Box>
+                                            </Box>
                                         </Box>
                                     </Box>
                                 );
