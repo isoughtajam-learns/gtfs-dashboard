@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactElement } from 'react';
 import {Box, Checkbox, CircularProgress, IconButton, ListItemText, Menu, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip} from "@mui/material";
-import type { SxProps, Theme } from "@mui/material/styles";
 import { keyframes } from "@emotion/react";
 import TripDetailCard from "./TripDetailCard.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
 import { routeLineLabel } from "./lineLabel.ts";
+import TransferIndicators from "./TransferIndicators.tsx";
+import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
 
 type TripUpdate = {
     trip_id: string;
@@ -24,7 +25,12 @@ type TripUpdate = {
     route_id?: string | null;
     route_short_name?: string | null;
     route_long_name?: string | null;
+    // Phase 3 transfers (see .claude/plans/development.md) - see
+    // TransferIndicators.tsx for how these render.
+    intra_system_transfers?: IntraSystemTransfer[];
+    inter_system_transfer_systems?: string[];
 };
+
 
 // `seq` is client-assigned at insert/update time, since nothing in the raw
 // payload is otherwise guaranteed unique - it doubles as the row's React key,
@@ -41,7 +47,7 @@ const MAX_RETRY_DELAY_MS = 30_000;
 // inheriting it from the <Table>'s own sx: MUI's TableCell/TableHead
 // assert their own theme-driven font-family directly, which wins over
 // an ancestor's inherited value the way plain HTML/CSS wouldn't.
-const headCellSx: SxProps<Theme> = {
+const headCellSx = {
     fontFamily: "var(--font-mono)",
     fontSize: "0.9rem",
     letterSpacing: "0.1em",
@@ -638,7 +644,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                     <FilterIcon />
                                 </IconButton>
                             </TableCell>
-                            <TableCell align="right" sx={headCellSx}>
+                            <TableCell sx={headCellSx}>
                                 Station
                                 <IconButton
                                     size="small"
@@ -655,7 +661,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 </IconButton>
                             </TableCell>
                             {/*<TableCell align="right" sx={headCellSx}>Last</TableCell>*/}
-                            <TableCell align="right" sx={headCellSx}>Status</TableCell>
+                            <TableCell align="center" sx={headCellSx}>Status</TableCell>
                             <TableCell align="right" sx={headCellSx}>
                                 Next
                                 <IconButton
@@ -691,8 +697,27 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 <TableCell component="th" scope="row" sx={bodyCellSx}>
                                     <HeadsignChip message={message} />
                                 </TableCell>
-                                <TableCell align="right" sx={bodyCellSx}>{ message.stop_name }</TableCell>
-                                <TableCell align="right" sx={bodyCellSx}>
+                                <TableCell sx={bodyCellSx}>
+                                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                                        <Box component="span">{ message.stop_name }</Box>
+                                        {/* Capped width + flexShrink:0 so a stop with several
+                                            transfers wraps onto a couple of stacked rows here
+                                            instead of stretching the whole Station column wide
+                                            enough to fit them side by side; justifyContent:
+                                            space-between on the row above pins this group to
+                                            the column's right edge rather than hugging the
+                                            name. */}
+                                        <Box sx={{ maxWidth: 150, flexShrink: 0 }}>
+                                            <TransferIndicators
+                                                intraSystemTransfers={message.intra_system_transfers ?? []}
+                                                interSystemTransferSystems={message.inter_system_transfer_systems ?? []}
+                                                onInterClick={(transferSystemId) => onSystemChange(transferSystemId)}
+                                                compactIntra={systemId === "BART"}
+                                            />
+                                        </Box>
+                                    </Box>
+                                </TableCell>
+                                <TableCell align="center" sx={bodyCellSx}>
                                     <StatusPill message={message} />
                                 </TableCell>
                                 <NextTimeTooltip message={message}>
@@ -711,7 +736,11 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 above, outside this branch, so it stays visible even with no
                 data yet. */}
             <Box sx={{ display: { xs: "block", sm: "none" } }}>
-                {visibleMessages.map((message) => (
+                {visibleMessages.map((message) => {
+                    const hasTransfers =
+                        (message.intra_system_transfers?.length ?? 0) > 0 ||
+                        (message.inter_system_transfer_systems?.length ?? 0) > 0;
+                    return (
                     <Box
                         key={message.seq}
                         onClick={() => setSelectedTripId(message.trip_id)}
@@ -753,8 +782,10 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 name long enough to wrap onto a second line inherits
                                 index.css's #root { text-align: center } and that
                                 second line renders indented instead of flush left. */}
-                            <Box component="span" sx={{ fontSize: "0.95rem", color: "var(--ink)", textAlign: "left" }}>
-                                { message.stop_name }
+                            <Box sx={{ minWidth: 0, flex: "1 1 auto", textAlign: "left" }}>
+                                <Box component="span" sx={{ fontSize: "0.95rem", color: "var(--ink)" }}>
+                                    { message.stop_name }
+                                </Box>
                             </Box>
                             <NextTimeTooltip message={message}>
                                 <Box component="span" sx={{ fontSize: "0.95rem", letterSpacing: "0.05em", color: "var(--ink)", flexShrink: 0 }}>
@@ -762,8 +793,25 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 </Box>
                             </NextTimeTooltip>
                         </Box>
+                        {/* Third row, own-line and left-justified - transfers used
+                            to be squeezed into the station row above (maxWidth: 80)
+                            which cramped multi-transfer stops; a dedicated row gives
+                            them the full card width instead. Only rendered when
+                            there's something to show, so a stop with no transfers
+                            doesn't pick up an empty row's gap spacing. */}
+                        {hasTransfers && (
+                            <Box sx={{ textAlign: "left" }}>
+                                <TransferIndicators
+                                    intraSystemTransfers={message.intra_system_transfers ?? []}
+                                    interSystemTransferSystems={message.inter_system_transfer_systems ?? []}
+                                    onInterClick={(transferSystemId) => onSystemChange(transferSystemId)}
+                                    compactIntra={systemId === "BART"}
+                                />
+                            </Box>
+                        )}
                     </Box>
-                ))}
+                    );
+                })}
             </Box>
             </>
             )}
@@ -824,6 +872,10 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             systemId={systemId}
             tripId={selectedTripId}
             onClose={() => setSelectedTripId(null)}
+            onSwitchSystem={(transferSystemId) => {
+                onSystemChange(transferSystemId);
+                setSelectedTripId(null);
+            }}
         />
         </>
     )

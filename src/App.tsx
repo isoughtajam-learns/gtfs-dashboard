@@ -4,6 +4,7 @@ import './App.css'
 import EventStreamComponent from "./EventStreamComponent.tsx";
 import Header from "./Header.tsx";
 import About from "./About.tsx";
+import NotFound from "./NotFound.tsx";
 import { fetchTransitSystems } from "./transitSystems.ts";
 import type { TransitSystem } from "./transitSystems.ts";
 import {Grid} from "@mui/material";
@@ -82,6 +83,7 @@ function App() {
                 }
               />
               <Route path="/about" element={<About />} />
+              <Route path="*" element={<NotFound />} />
             </Routes>
           </Grid>
         </Grid>
