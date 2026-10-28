@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Box, Dialog, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
 import { keyframes } from "@emotion/react";
 import { routeLineLabel } from "./lineLabel.ts";
+import TransferIndicators from "./TransferIndicators.tsx";
+import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
 // raw feed value is not a valid CSS color. Falls back to theme tokens when absent.
@@ -44,6 +46,13 @@ type TripStopDetail = {
     departure_time: number | null;
     departure_delay: number | null;
     schedule_relationship: string;
+    // Phase 3 transfers (see .claude/plans/development.md) - see
+    // TransferIndicators.tsx for how these render. Optional, like
+    // TripUpdate's equivalent fields in EventStreamComponent.tsx - every
+    // access below guards with `?? []` rather than trusting the backend to
+    // always attach them.
+    intra_system_transfers?: IntraSystemTransfer[];
+    inter_system_transfer_systems?: string[];
 };
 
 type TripDetail = {
@@ -136,12 +145,17 @@ type TripDetailCardProps = {
     systemId: string;
     tripId: string | null;
     onClose: () => void;
+    // Clicking an inter-system transfer badge (see TransferIndicators)
+    // switches the parent feed to that system - closes this card itself
+    // (via onClose, handled by the caller) after triggering it, so what's
+    // visible next is the switched feed this card was opened from.
+    onSwitchSystem: (systemId: string) => void;
 };
 
 // Filling most of the screen (not the whole viewport) is deliberate: the
 // live table stays visible (dimmed, via the Dialog's own backdrop) around
 // the edges, so the streamed feed this card was opened from is still there.
-export default function TripDetailCard({ systemId, tripId, onClose }: TripDetailCardProps) {
+export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSystem }: TripDetailCardProps) {
     const [detail, setDetail] = useState<TripDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -155,8 +169,26 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
         setDetail(null);
 
         fetch(`/api/trip_detail/${systemId}/${encodeURIComponent(tripId)}`)
-            .then((res) => {
-                if (!res.ok) throw new Error(`Failed to fetch trip detail: ${res.status}`);
+            .then(async (res) => {
+                if (!res.ok) {
+                    // FastAPI's default HTTPException body is {"detail":
+                    // "..."} - trip_detail() already writes a specific,
+                    // human-readable message there for the common 404 case
+                    // (a trip that's aged out of the live feed), so surface
+                    // that verbatim instead of a bare status code. Falls
+                    // back to a generic message for anything else (502 from
+                    // an unreachable upstream source, etc.) or a body that
+                    // isn't JSON at all.
+                    // Named errorDetail, not detail - this scope is inside
+                    // the same component as the `detail` (TripDetail | null)
+                    // state variable below, and shadowing it here invited
+                    // confusion for a future edit in this same callback.
+                    const errorDetail = await res.json().then(
+                        (body: { detail?: string }) => body.detail,
+                        () => undefined
+                    );
+                    throw new Error(errorDetail ?? `Failed to load trip detail (${res.status})`);
+                }
                 return res.json();
             })
             .then((json: TripDetail) => { if (!cancelled) setDetail(json); })
@@ -327,7 +359,17 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                                     isNext ? { backgroundColor: "var(--coral-tint)" } : {},
                                                 ]}
                                             >
-                                                <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ stop.stop_name ?? stop.stop_id }</TableCell>
+                                                <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>
+                                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                                        <Box component="span">{ stop.stop_name ?? stop.stop_id }</Box>
+                                                        <TransferIndicators
+                                                            intraSystemTransfers={stop.intra_system_transfers ?? []}
+                                                            interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
+                                                            onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
+                                                            compactIntra={systemId === "BART"}
+                                                        />
+                                                    </Box>
+                                                </TableCell>
                                                 <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatEpochSeconds(stop.arrival_time) }</TableCell>
                                                 <TableCell sx={isNext && isDelayed ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatDelay(stop.arrival_delay) }</TableCell>
                                                 <TableCell sx={stopBodyCellSx}>{ formatEpochSeconds(stop.departure_time) }</TableCell>
@@ -375,6 +417,20 @@ export default function TripDetailCard({ systemId, tripId, onClose }: TripDetail
                                                 </Box>
                                             </Box>
                                         </Box>
+                                        {/* Third row, own-line and left-justified - transfers
+                                            used to sit inline next to the stop name, which
+                                            cramped multi-transfer stops onto one line. Only
+                                            rendered when there's something to show. */}
+                                        {((stop.intra_system_transfers?.length ?? 0) > 0 || (stop.inter_system_transfer_systems?.length ?? 0) > 0) && (
+                                            <Box sx={{ textAlign: "left", mt: 1 }}>
+                                                <TransferIndicators
+                                                    intraSystemTransfers={stop.intra_system_transfers ?? []}
+                                                    interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
+                                                    onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
+                                                    compactIntra={systemId === "BART"}
+                                                />
+                                            </Box>
+                                        )}
                                         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mt: 1 }}>
                                             <Box>
                                                 <Box sx={stopFieldLabelSx}>Departure</Box>
