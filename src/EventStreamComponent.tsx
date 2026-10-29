@@ -9,6 +9,7 @@ import type { TransitSystem } from "./transitSystems.ts";
 import { routeLineLabel } from "./lineLabel.ts";
 import TransferIndicators from "./TransferIndicators.tsx";
 import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
+import { hasTransfers } from "./transferUtils.ts";
 
 type TripUpdate = {
     trip_id: string;
@@ -285,6 +286,10 @@ type EventStreamComponentProps = {
 };
 
 export default function EventStreamComponent({ systemId, systems, onSystemChange }: EventStreamComponentProps) {
+    // Computed once here rather than re-checked at each of this component's
+    // own TransferIndicators call sites (see TransferIndicators.tsx's own
+    // comment on why BART alone gets compact dots).
+    const compactIntra = systemId === "BART";
     const [messages, setMessages] = useState<StreamedUpdate[]>([]);
     const [connected, setConnected] = useState(false);
     // True once this system's poll cycle (30s - see the backend's
@@ -713,7 +718,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                                 intraSystemTransfers={message.intra_system_transfers ?? []}
                                                 interSystemTransferSystems={message.inter_system_transfer_systems ?? []}
                                                 onInterClick={(transferSystemId) => onSystemChange(transferSystemId)}
-                                                compactIntra={systemId === "BART"}
+                                                compactIntra={compactIntra}
                                             />
                                         </Box>
                                     </Box>
@@ -738,9 +743,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 data yet. */}
             <Box sx={{ display: { xs: "block", sm: "none" } }}>
                 {visibleMessages.map((message) => {
-                    const hasTransfers =
-                        (message.intra_system_transfers?.length ?? 0) > 0 ||
-                        (message.inter_system_transfer_systems?.length ?? 0) > 0;
+                    const rowHasTransfers = hasTransfers(message.intra_system_transfers, message.inter_system_transfer_systems);
                     return (
                     <Box
                         key={message.seq}
@@ -800,13 +803,13 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                             them the full card width instead. Only rendered when
                             there's something to show, so a stop with no transfers
                             doesn't pick up an empty row's gap spacing. */}
-                        {hasTransfers && (
+                        {rowHasTransfers && (
                             <Box sx={{ textAlign: "left" }}>
                                 <TransferIndicators
                                     intraSystemTransfers={message.intra_system_transfers ?? []}
                                     interSystemTransferSystems={message.inter_system_transfer_systems ?? []}
                                     onInterClick={(transferSystemId) => onSystemChange(transferSystemId)}
-                                    compactIntra={systemId === "BART"}
+                                    compactIntra={compactIntra}
                                 />
                             </Box>
                         )}
