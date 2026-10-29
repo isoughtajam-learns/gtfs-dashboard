@@ -1,5 +1,6 @@
 import { Box, Tooltip } from "@mui/material";
 import { routeLineLabel } from "./lineLabel.ts";
+import { hasTransfers } from "./transferUtils.ts";
 
 // GTFS route_color / route_text_color are six hex digits with the '#'
 // omitted, so a raw feed value is not a valid CSS color. Falls back to
@@ -74,19 +75,19 @@ const dotSx = {
     padding: 0,
 };
 
-// Inter-system badges otherwise show the raw system id verbatim (see
-// interSystemLabel below) - short enough for every other active system
-// ("BART", "SF-MTA", "Caltrain", "VTA", "AC_Transit", ...), but "Golden_
-// Gate_Transit" alone is long enough to wrap the pill awkwardly. Keyed by
-// system id so adding another abbreviation later is a one-line change.
-const SYSTEM_ABBREVIATIONS: Record<string, string> = {
-    Golden_Gate_Transit: "GGT",
+// An inter-system badge shows the raw system id verbatim - short enough
+// for most active systems ("BART", "SF-MTA", "Caltrain", "VTA",
+// "AC_Transit", ...), but a longer one ("Golden_Gate_Transit") would wrap
+// the pill awkwardly with no limit. interSystemPillSx's maxWidth/ellipsis
+// below truncates any id that's too long to fit on one line, same pattern
+// as EventStreamComponent.tsx's HeadsignChip - the Tooltip still carries
+// the full id on hover either way, so nothing is actually hidden.
+const interSystemPillSx = {
+    ...pillSx,
+    maxWidth: 120,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
 };
-
-// The Tooltip still shows the full system id on hover either way - this
-// only shortens what's visible inline on the badge itself.
-const interSystemLabel = (systemId: string): string =>
-    SYSTEM_ABBREVIATIONS[systemId] ?? systemId;
 
 type TransferIndicatorsProps = {
     intraSystemTransfers: IntraSystemTransfer[];
@@ -115,17 +116,13 @@ export default function TransferIndicators({
     onInterClick,
     compactIntra = false,
 }: TransferIndicatorsProps) {
-    if (intraSystemTransfers.length === 0 && interSystemTransferSystems.length === 0) {
+    if (!hasTransfers(intraSystemTransfers, interSystemTransferSystems)) {
         return null;
     }
     const displayedIntraTransfers = compactIntra ? dedupeByLine(intraSystemTransfers) : intraSystemTransfers;
     return (
         <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, alignItems: "center" }}>
             {displayedIntraTransfers.map((transfer) => {
-                const label =
-                    routeLineLabel(transfer.route_id, transfer.route_short_name, transfer.route_long_name) ??
-                    transfer.route_short_name ??
-                    transfer.route_id;
                 if (compactIntra) {
                     return (
                         <Tooltip key={`intra-${transfer.route_id}`} title={`Transfer to ${baseLineName(transfer)}`}>
@@ -138,6 +135,13 @@ export default function TransferIndicators({
                         </Tooltip>
                     );
                 }
+                // Only computed here, not above - the compactIntra branch
+                // above never reads it, and routeLineLabel runs per transfer
+                // on this list's every render (SSE-driven, so frequent).
+                const label =
+                    routeLineLabel(transfer.route_id, transfer.route_short_name, transfer.route_long_name) ??
+                    transfer.route_short_name ??
+                    transfer.route_id;
                 return (
                     <Tooltip key={`intra-${transfer.route_id}`} title={`Transfer to ${label}`}>
                         <Box
@@ -164,14 +168,14 @@ export default function TransferIndicators({
                             onInterClick(transferSystemId);
                         }}
                         sx={{
-                            ...pillSx,
+                            ...interSystemPillSx,
                             cursor: "pointer",
                             border: "1px solid var(--hairline)",
                             backgroundColor: "var(--surface)",
                             color: "var(--ink)",
                         }}
                     >
-                        { interSystemLabel(transferSystemId) }
+                        { transferSystemId }
                     </Box>
                 </Tooltip>
             ))}

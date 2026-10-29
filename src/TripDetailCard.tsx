@@ -3,6 +3,7 @@ import { Box, Dialog, IconButton, Table, TableBody, TableCell, TableContainer, T
 import { keyframes } from "@emotion/react";
 import { routeLineLabel } from "./lineLabel.ts";
 import TransferIndicators from "./TransferIndicators.tsx";
+import { hasTransfers } from "./transferUtils.ts";
 import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
@@ -156,6 +157,10 @@ type TripDetailCardProps = {
 // live table stays visible (dimmed, via the Dialog's own backdrop) around
 // the edges, so the streamed feed this card was opened from is still there.
 export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSystem }: TripDetailCardProps) {
+    // Computed once here rather than re-checked at each of this component's
+    // own TransferIndicators call sites (see TransferIndicators.tsx's own
+    // comment on why BART alone gets compact dots).
+    const compactIntra = systemId === "BART";
     const [detail, setDetail] = useState<TripDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -366,7 +371,7 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                                             intraSystemTransfers={stop.intra_system_transfers ?? []}
                                                             interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
                                                             onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
-                                                            compactIntra={systemId === "BART"}
+                                                            compactIntra={compactIntra}
                                                         />
                                                     </Box>
                                                 </TableCell>
@@ -421,13 +426,13 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                             used to sit inline next to the stop name, which
                                             cramped multi-transfer stops onto one line. Only
                                             rendered when there's something to show. */}
-                                        {((stop.intra_system_transfers?.length ?? 0) > 0 || (stop.inter_system_transfer_systems?.length ?? 0) > 0) && (
+                                        {hasTransfers(stop.intra_system_transfers, stop.inter_system_transfer_systems) && (
                                             <Box sx={{ textAlign: "left", mt: 1 }}>
                                                 <TransferIndicators
                                                     intraSystemTransfers={stop.intra_system_transfers ?? []}
                                                     interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
                                                     onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
-                                                    compactIntra={systemId === "BART"}
+                                                    compactIntra={compactIntra}
                                                 />
                                             </Box>
                                         )}
