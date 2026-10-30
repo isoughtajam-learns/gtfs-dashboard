@@ -10,6 +10,8 @@ import { routeLineLabel } from "./lineLabel.ts";
 import TransferIndicators from "./TransferIndicators.tsx";
 import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
 import { hasTransfers } from "./transferUtils.ts";
+import { fetchAllLines, fetchAllStops } from "./filterOptions.ts";
+import type { LineSummary } from "./filterOptions.ts";
 
 type TripUpdate = {
     trip_id: string;
@@ -79,17 +81,27 @@ const COLUMN_LABELS: Record<SortField, string> = {
     next: "Next",
 };
 
+// Structural, not StreamedUpdate-specific: also matches LineSummary (see
+// filterOptions.ts) field-for-field, so the exact same formatting runs
+// against both a live message and a fetched "all lines" row below.
+type LineFields = {
+    route_id?: string | null;
+    route_short_name?: string | null;
+    route_long_name?: string | null;
+    trip_headsign: string | null;
+};
+
 // Line column's own fallback (trip_headsign) for whenever routeLineLabel
 // returns null - shared with the filter checklist/sort below, and distinct
 // from TripDetailCard's own fallback for the same shared helper (see
 // lineLabel.ts's own comment on why that differs per call site).
-const lineLabel = (message: StreamedUpdate): string | null =>
+const lineLabel = (message: LineFields): string | null =>
     routeLineLabel(message.route_id, message.route_short_name, message.route_long_name) ?? message.trip_headsign;
 
 // GTFS trip_headsign is nullable (see the Line cell's own null check below);
 // group those rows under one filterable bucket rather than dropping them.
 const NO_LINE = "(No line)";
-const lineFilterValue = (message: StreamedUpdate) => lineLabel(message) ?? NO_LINE;
+const lineFilterValue = (message: LineFields) => lineLabel(message) ?? NO_LINE;
 
 // Sort/filter state persists across reloads (and across switching transit
 // systems, matching this app's existing in-session behavior of not
@@ -328,6 +340,37 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     // Which trip's detail card is open, if any - set by clicking a row.
     const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
+    // IRL-26/IRL-27: every line/stop this system actually has, not just
+    // whatever's in the live buffer right now (see distinctValues below,
+    // which unions these in). Start empty rather than null - the checklist
+    // just shows fewer entries until the fetch resolves, same as it always
+    // has, so there's no loading state to thread through the UI for this.
+    const [allLines, setAllLines] = useState<LineSummary[]>([]);
+    const [allStopNames, setAllStopNames] = useState<string[]>([]);
+
+    // Fires on system switch only - this is schedule data (changes at most
+    // daily), not live data, so it has no business re-running on every SSE
+    // event. Deliberately doesn't block or gate anything else in this
+    // component: the SSE connection effect below starts immediately
+    // regardless, and excludedValues (the user's actual filter selections,
+    // as opposed to the checklist's available options) is untouched by
+    // this fetch's state or outcome either way - a slow or failed fetch
+    // just means the checklist stays buffer-derived a little longer, never
+    // a reason to block the system switch or discard a selection.
+    useEffect(() => {
+        if (!systemId) return;
+        let cancelled = false;
+        setAllLines([]);
+        setAllStopNames([]);
+        void fetchAllLines(systemId)
+            .then((lines) => { if (!cancelled) setAllLines(lines); })
+            .catch((error: unknown) => console.error("Failed to load all lines:", error));
+        void fetchAllStops(systemId)
+            .then((names) => { if (!cancelled) setAllStopNames(names); })
+            .catch((error: unknown) => console.error("Failed to load all stops:", error));
+        return () => { cancelled = true; };
+    }, [systemId]);
+
     // Persist sort/filter choices every time they change, not just on
     // unmount, so a mid-session crash or closed tab doesn't lose them.
     useEffect(() => {
@@ -340,13 +383,21 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         });
     }, [sort, excludedValues]);
 
-    // Distinct values currently in the buffer, for the filter checklists.
-    // Recomputed as messages stream in/age out, so the checklist always
-    // reflects what's actually visible right now.
+    // Distinct values for the filter checklists: the full set from
+    // allLines/allStopNames once loaded, unioned with whatever's in the
+    // live buffer right now (covers the window before that fetch resolves,
+    // and the edge case of a live trip whose (route, headsign) pair isn't
+    // in the schedule snapshot yet).
     const distinctValues: Record<FilterField, string[]> = useMemo(() => ({
-        trip_headsign: Array.from(new Set(messages.map((m) => lineFilterValue(m)))).sort(),
-        stop_name: Array.from(new Set(messages.map((m) => m.stop_name))).sort(),
-    }), [messages]);
+        trip_headsign: Array.from(new Set([
+            ...allLines.map((line) => lineFilterValue(line)),
+            ...messages.map((m) => lineFilterValue(m)),
+        ])).sort(),
+        stop_name: Array.from(new Set([
+            ...allStopNames,
+            ...messages.map((m) => m.stop_name),
+        ])).sort(),
+    }), [messages, allLines, allStopNames]);
 
     const visibleMessages = useMemo(() => {
         const filtered = messages.filter((m) =>
