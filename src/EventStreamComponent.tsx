@@ -364,10 +364,10 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         setAllStopNames([]);
         void fetchAllLines(systemId)
             .then((lines) => { if (!cancelled) setAllLines(lines); })
-            .catch((error: unknown) => console.error("Failed to load all lines:", error));
+            .catch((error: unknown) => { if (!cancelled) console.error("Failed to load all lines:", error); });
         void fetchAllStops(systemId)
             .then((names) => { if (!cancelled) setAllStopNames(names); })
-            .catch((error: unknown) => console.error("Failed to load all stops:", error));
+            .catch((error: unknown) => { if (!cancelled) console.error("Failed to load all stops:", error); });
         return () => { cancelled = true; };
     }, [systemId]);
 
@@ -398,6 +398,37 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             ...messages.map((m) => m.stop_name),
         ])).sort(),
     }), [messages, allLines, allStopNames]);
+
+    // clearAllValues below snapshots distinctValues[field] into excludedValues
+    // at click time - fine once allLines/allStopNames have loaded, but if a
+    // user hits "Clear All" in the brief window before that fetch resolves,
+    // the snapshot only covers the live buffer's handful of values. Without
+    // this, the schedule-wide values that appear a moment later when the
+    // fetch does resolve would silently NOT be excluded, undoing what the
+    // user just asked for. Keeps any field that's currently "every known
+    // value excluded" in sync as distinctValues grows, rather than freezing
+    // it at whatever was known at click time.
+    const prevDistinctValuesRef = useRef(distinctValues);
+    useEffect(() => {
+        const prevDistinctValues = prevDistinctValuesRef.current;
+        prevDistinctValuesRef.current = distinctValues;
+        setExcludedValues((prev) => {
+            let changed = false;
+            const next = { ...prev };
+            (Object.keys(distinctValues) as FilterField[]).forEach((field) => {
+                const wasFullyExcluded =
+                    prevDistinctValues[field].length > 0 &&
+                    prevDistinctValues[field].every((value) => prev[field].has(value));
+                if (!wasFullyExcluded) return;
+                const grown = new Set(distinctValues[field]);
+                if (grown.size !== prev[field].size) {
+                    next[field] = grown;
+                    changed = true;
+                }
+            });
+            return changed ? next : prev;
+        });
+    }, [distinctValues]);
 
     const visibleMessages = useMemo(() => {
         const filtered = messages.filter((m) =>
