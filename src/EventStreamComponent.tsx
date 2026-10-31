@@ -439,6 +439,11 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         setExcludedValues((prev) => ({ ...prev, [field]: new Set() }));
     const clearAllValues = (field: FilterField) =>
         setExcludedValues((prev) => ({ ...prev, [field]: new Set(distinctValues[field]) }));
+    // Resets both filter columns at once - the "no results" empty state's
+    // way out, as opposed to selectAllValues above which only ever touches
+    // one column (the header menu's own "Select All").
+    const resetAllFilters = () =>
+        setExcludedValues({ trip_headsign: new Set(), stop_name: new Set() });
 
     // Shared by the table headers (sm+) and the mobile toolbar buttons.
     const isColumnActive = (field: SortField) =>
@@ -675,6 +680,49 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                         </Box>
                     </Box>
                 )
+            ) : visibleMessages.length === 0 ? (
+                // Distinct from the messages.length===0 branch above: there
+                // is live data, the filters themselves have just excluded
+                // all of it. Same role as "No active trips right now" -
+                // confirmed empty, not a bug - but actionable, since unlike
+                // that case the user can get back to a non-empty feed
+                // without waiting, by clearing what they chose.
+                <Box
+                    role="status"
+                    aria-live="polite"
+                    sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 1.5,
+                        py: 8,
+                    }}
+                >
+                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                        No trips match the current filters
+                    </Box>
+                    <Box
+                        component="button"
+                        onClick={resetAllFilters}
+                        sx={{
+                            fontFamily: "var(--font-mono)",
+                            fontSize: "0.75rem",
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                            fontWeight: 600,
+                            color: "var(--coral)",
+                            backgroundColor: "transparent",
+                            border: "1px solid var(--hairline)",
+                            borderRadius: "20px",
+                            px: 1.5,
+                            py: 0.5,
+                            cursor: "pointer",
+                        }}
+                    >
+                        Clear filters
+                    </Box>
+                </Box>
             ) : (
             <>
             {/* sm and up: the full table. Below sm it doesn't degrade
