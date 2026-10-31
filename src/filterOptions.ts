@@ -20,7 +20,17 @@ export async function fetchAllLines(systemId: string): Promise<LineSummary[]> {
     if (!res.ok) {
         throw new Error(`Failed to fetch lines: ${res.status}`);
     }
-    return res.json();
+    const data: unknown = await res.json();
+    // A 200 with a shape other than an array (an error body, a future
+    // paginated envelope, ...) would otherwise resolve "successfully" and
+    // get stored as-is - the caller's distinctValues useMemo then spreads/
+    // maps it during render with no ErrorBoundary anywhere in this app to
+    // catch the resulting crash. Caught here instead, so it surfaces as the
+    // same caught-and-logged rejection as a network/HTTP failure.
+    if (!Array.isArray(data)) {
+        throw new Error("Unexpected /lines response shape");
+    }
+    return data as LineSummary[];
 }
 
 export async function fetchAllStops(systemId: string): Promise<string[]> {
@@ -28,5 +38,9 @@ export async function fetchAllStops(systemId: string): Promise<string[]> {
     if (!res.ok) {
         throw new Error(`Failed to fetch stops: ${res.status}`);
     }
-    return res.json();
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) {
+        throw new Error("Unexpected /stops response shape");
+    }
+    return data as string[];
 }

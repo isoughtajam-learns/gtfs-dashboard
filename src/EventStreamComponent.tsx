@@ -445,6 +445,53 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     const resetAllFilters = () =>
         setExcludedValues({ trip_headsign: new Set(), stop_name: new Set() });
 
+    // Shown in place of rows when the filters (not a genuinely empty
+    // buffer - see the messages.length===0 branch below) exclude every
+    // message. Deliberately rendered *inside* the existing table/card
+    // regions rather than replacing them outright - on sm+ that keeps the
+    // header row (and its per-column filter icons) mounted, so a desktop
+    // user who filtered down to nothing can still reopen a single column's
+    // checklist to uncheck one value, not just blow away every filter via
+    // Clear filters below.
+    const noResultsContent = (
+        <Box
+            role="status"
+            aria-live="polite"
+            sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1.5,
+                py: 8,
+            }}
+        >
+            <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                No trips match the current filters
+            </Box>
+            <Box
+                component="button"
+                onClick={resetAllFilters}
+                sx={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.75rem",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontWeight: 600,
+                    color: "var(--coral)",
+                    backgroundColor: "transparent",
+                    border: "1px solid var(--hairline)",
+                    borderRadius: "20px",
+                    px: 1.5,
+                    py: 0.5,
+                    cursor: "pointer",
+                }}
+            >
+                Clear filters
+            </Box>
+        </Box>
+    );
+
     // Shared by the table headers (sm+) and the mobile toolbar buttons.
     const isColumnActive = (field: SortField) =>
         sort?.field === field || (isFilterField(field) && excludedValues[field].size > 0);
@@ -680,49 +727,6 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                         </Box>
                     </Box>
                 )
-            ) : visibleMessages.length === 0 ? (
-                // Distinct from the messages.length===0 branch above: there
-                // is live data, the filters themselves have just excluded
-                // all of it. Same role as "No active trips right now" -
-                // confirmed empty, not a bug - but actionable, since unlike
-                // that case the user can get back to a non-empty feed
-                // without waiting, by clearing what they chose.
-                <Box
-                    role="status"
-                    aria-live="polite"
-                    sx={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 1.5,
-                        py: 8,
-                    }}
-                >
-                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
-                        No trips match the current filters
-                    </Box>
-                    <Box
-                        component="button"
-                        onClick={resetAllFilters}
-                        sx={{
-                            fontFamily: "var(--font-mono)",
-                            fontSize: "0.75rem",
-                            letterSpacing: "0.08em",
-                            textTransform: "uppercase",
-                            fontWeight: 600,
-                            color: "var(--coral)",
-                            backgroundColor: "transparent",
-                            border: "1px solid var(--hairline)",
-                            borderRadius: "20px",
-                            px: 1.5,
-                            py: 0.5,
-                            cursor: "pointer",
-                        }}
-                    >
-                        Clear filters
-                    </Box>
-                </Box>
             ) : (
             <>
             {/* sm and up: the full table. Below sm it doesn't degrade
@@ -786,7 +790,13 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {visibleMessages.map((message) => (
+                        {visibleMessages.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={4} sx={{ border: 0 }}>
+                                    {noResultsContent}
+                                </TableCell>
+                            </TableRow>
+                        ) : visibleMessages.map((message) => (
                             <TableRow
                                 key={ message.seq }
                                 onClick={() => setSelectedTripId(message.trip_id)}
@@ -841,7 +851,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 above, outside this branch, so it stays visible even with no
                 data yet. */}
             <Box sx={{ display: { xs: "block", sm: "none" } }}>
-                {visibleMessages.map((message) => {
+                {visibleMessages.length === 0 ? noResultsContent : visibleMessages.map((message) => {
                     const rowHasTransfers = hasTransfers(message.intra_system_transfers, message.inter_system_transfer_systems);
                     return (
                     <Box
