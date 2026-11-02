@@ -111,7 +111,24 @@ const FILTERS_STORAGE_KEY = "irl-transit:eventFilters";
 type StoredFilters = {
     sort: { field: SortField; direction: SortDirection } | null;
     excludedValues: Record<FilterField, string[]>;
+    // Optional: absent in filters stored before this field existed - see
+    // clearedAll's own comment below for what it means.
+    clearedAll?: Record<FilterField, boolean>;
 };
+
+// Cheap 32-bit FNV-1a hash of an already-sorted name list, joined with a
+// separator no stop/line name can contain. Used below to tell "the list's
+// contents changed" apart from "same length, different members" (e.g. one
+// buffer-only value aging out of the live window as a different one
+// appears) without diffing the full arrays on every render.
+function hashOrderedNames(names: string[]): string {
+    let hash = 0x811c9dc5;
+    for (const ch of names.join("\u0000")) {
+        hash ^= ch.codePointAt(0) ?? 0;
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16);
+}
 
 // localStorage access can throw (Safari private browsing, sandboxed
 // iframes, disabled storage) - persistence is a nice-to-have, not worth
@@ -331,6 +348,23 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             stop_name: new Set(stored?.stop_name ?? []),
         };
     });
+    // Whether the user deliberately put a column into "every value
+    // excluded" state via the Clear All menu item, as opposed to
+    // excludedValues[field] merely happening to contain every value
+    // distinctValues currently knows about. Set only by the user actions
+    // below (clearAllValues/selectAllValues/toggleFilterValue/
+    // resetAllFilters) - never re-derived from comparing excludedValues
+    // against distinctValues, which is what let a system switch (which
+    // transiently empties distinctValues while the new system's schedule
+    // loads) get mistaken for "the user cleared everything" and silently
+    // reset a real Clear All from the previous system.
+    const [clearedAll, setClearedAll] = useState<Record<FilterField, boolean>>(() => {
+        const stored = readStoredFilters()?.clearedAll;
+        return {
+            trip_headsign: stored?.trip_headsign ?? false,
+            stop_name: stored?.stop_name ?? false,
+        };
+    });
     const [headerMenu, setHeaderMenu] = useState<{ anchorEl: HTMLElement; field: SortField } | null>(null);
     // Below sm, the three column pills (each opening the same headerMenu
     // above) live in a second row that expands/collapses via the toolbar's
@@ -380,8 +414,9 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 trip_headsign: Array.from(excludedValues.trip_headsign),
                 stop_name: Array.from(excludedValues.stop_name),
             },
+            clearedAll,
         });
-    }, [sort, excludedValues]);
+    }, [sort, excludedValues, clearedAll]);
 
     // Distinct values for the filter checklists: the full set from
     // allLines/allStopNames once loaded, unioned with whatever's in the
@@ -405,30 +440,41 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     // the snapshot only covers the live buffer's handful of values. Without
     // this, the schedule-wide values that appear a moment later when the
     // fetch does resolve would silently NOT be excluded, undoing what the
-    // user just asked for. Keeps any field that's currently "every known
-    // value excluded" in sync as distinctValues grows, rather than freezing
-    // it at whatever was known at click time.
-    const prevDistinctValuesRef = useRef(distinctValues);
+    // user just asked for. Keeps any field the user explicitly Cleared All
+    // (see clearedAll above - never inferred from distinctValues content)
+    // in sync as distinctValues changes shape, rather than freezing it at
+    // whatever was known at click time. Skipped while distinctValues[field]
+    // is transiently empty (a system switch resets messages/allLines before
+    // the new system's fetch resolves) so that gap can't be mistaken for
+    // "nothing to exclude" and wipe out the carried-over Clear All.
+    // Compares a hash of the (sorted) list rather than its length - a
+    // same-size swap (one buffer-only value ages out as a different one
+    // appears) changes the hash even though the count doesn't, which a
+    // length check alone would miss.
+    const lastSyncedHashRef = useRef<Record<FilterField, string | null>>({
+        trip_headsign: null,
+        stop_name: null,
+    });
     useEffect(() => {
-        const prevDistinctValues = prevDistinctValuesRef.current;
-        prevDistinctValuesRef.current = distinctValues;
-        setExcludedValues((prev) => {
-            let changed = false;
-            const next = { ...prev };
-            (Object.keys(distinctValues) as FilterField[]).forEach((field) => {
-                const wasFullyExcluded =
-                    prevDistinctValues[field].length > 0 &&
-                    prevDistinctValues[field].every((value) => prev[field].has(value));
-                if (!wasFullyExcluded) return;
-                const grown = new Set(distinctValues[field]);
-                if (grown.size !== prev[field].size) {
-                    next[field] = grown;
-                    changed = true;
-                }
-            });
-            return changed ? next : prev;
+        // Decide what (if anything) needs resyncing - and mutate
+        // lastSyncedHashRef - here in the effect body, not inside the
+        // setExcludedValues updater below: React (StrictMode, dev only)
+        // double-invokes updater functions to catch impure ones, and a ref
+        // mutation inside the updater is exactly that - the first
+        // invocation would compute the real update, but the second sees
+        // the ref already mutated to match, concludes "no change", and
+        // that's the result that gets applied.
+        const updates: Partial<Record<FilterField, Set<string>>> = {};
+        (Object.keys(distinctValues) as FilterField[]).forEach((field) => {
+            if (!clearedAll[field] || distinctValues[field].length === 0) return;
+            const hash = hashOrderedNames(distinctValues[field]);
+            if (hash === lastSyncedHashRef.current[field]) return;
+            lastSyncedHashRef.current[field] = hash;
+            updates[field] = new Set(distinctValues[field]);
         });
-    }, [distinctValues]);
+        if (Object.keys(updates).length === 0) return;
+        setExcludedValues((prev) => ({ ...prev, ...updates }));
+    }, [distinctValues, clearedAll]);
 
     const visibleMessages = useMemo(() => {
         const filtered = messages.filter((m) =>
@@ -460,21 +506,32 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         closeHeaderMenu();
     };
     const toggleFilterValue = (field: FilterField, value: string) => {
+        // A one-off pick is no longer "every value" even if it happens to
+        // still cover all of them right now - only the Clear All menu item
+        // below sets this flag, so a value arriving later isn't silently
+        // swept in by this instead.
+        setClearedAll((prev) => ({ ...prev, [field]: false }));
         setExcludedValues((prev) => {
             const next = new Set(prev[field]);
             if (next.has(value)) next.delete(value); else next.add(value);
             return { ...prev, [field]: next };
         });
     };
-    const selectAllValues = (field: FilterField) =>
+    const selectAllValues = (field: FilterField) => {
+        setClearedAll((prev) => ({ ...prev, [field]: false }));
         setExcludedValues((prev) => ({ ...prev, [field]: new Set() }));
-    const clearAllValues = (field: FilterField) =>
+    };
+    const clearAllValues = (field: FilterField) => {
+        setClearedAll((prev) => ({ ...prev, [field]: true }));
         setExcludedValues((prev) => ({ ...prev, [field]: new Set(distinctValues[field]) }));
+    };
     // Resets both filter columns at once - the "no results" empty state's
     // way out, as opposed to selectAllValues above which only ever touches
     // one column (the header menu's own "Select All").
-    const resetAllFilters = () =>
+    const resetAllFilters = () => {
+        setClearedAll({ trip_headsign: false, stop_name: false });
         setExcludedValues({ trip_headsign: new Set(), stop_name: new Set() });
+    };
 
     // Shown in place of rows when the filters (not a genuinely empty
     // buffer - see the messages.length===0 branch below) exclude every
