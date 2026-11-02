@@ -45,6 +45,14 @@ type StreamedUpdate = TripUpdate & { seq: number };
 // The server names every event, so `onmessage` (unnamed events only) never fires.
 const EVENT_NAME = "trip_update";
 const MAX_MESSAGES = 50;
+// A system's Station list in particular can run into the thousands
+// (SF-MTA: ~2,200) - mounting every one of them as a MenuItem is what makes
+// opening the filter menu visibly slow there, since MUI's Menu/Popover has
+// to measure the whole list even though menuPaperSx's maxHeight only clips
+// it visually. The user doesn't need to see every value immediately, so the
+// checklist below caps how many it renders and offers a search box instead
+// of an unbounded scroll.
+const MAX_FILTER_MENU_ITEMS = 100;
 const MAX_RETRY_DELAY_MS = 30_000;
 
 // Every cell sets fontFamily explicitly rather than relying on
@@ -366,6 +374,12 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         };
     });
     const [headerMenu, setHeaderMenu] = useState<{ anchorEl: HTMLElement; field: SortField } | null>(null);
+    // Text typed into the filter checklist's search box - see
+    // MAX_FILTER_MENU_ITEMS above. Scoped to whichever column's menu is
+    // currently open; reset whenever that changes so reopening a menu (or
+    // switching from Line's to Station's) doesn't start pre-filtered on
+    // whatever was typed last time.
+    const [filterSearch, setFilterSearch] = useState("");
     // Below sm, the three column pills (each opening the same headerMenu
     // above) live in a second row that expands/collapses via the toolbar's
     // chevron toggle, rather than always taking up space.
@@ -493,9 +507,14 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         return sorted;
     }, [messages, excludedValues, sort]);
 
-    const openHeaderMenu = (field: SortField) => (event: MouseEvent<HTMLElement>) =>
+    const openHeaderMenu = (field: SortField) => (event: MouseEvent<HTMLElement>) => {
+        setFilterSearch("");
         setHeaderMenu({ anchorEl: event.currentTarget, field });
-    const closeHeaderMenu = () => setHeaderMenu(null);
+    };
+    const closeHeaderMenu = () => {
+        setHeaderMenu(null);
+        setFilterSearch("");
+    };
 
     const applySort = (field: SortField, direction: SortDirection) => {
         setSort({ field, direction });
@@ -1041,30 +1060,89 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                         ]
                         : []),
                     ...(isFilterField(headerMenu.field)
-                        ? [
-                            <MenuItem key="select-all" onClick={() => selectAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
-                                Select All
-                            </MenuItem>,
-                            <MenuItem key="clear-all" onClick={() => clearAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
-                                Clear All
-                            </MenuItem>,
-                            ...distinctValues[headerMenu.field as FilterField].map((value) => (
-                                <MenuItem
-                                    key={`value-${value}`}
-                                    onClick={() => toggleFilterValue(headerMenu.field as FilterField, value)}
-                                    sx={checkboxItemSx}
+                        ? (() => {
+                            const field = headerMenu.field as FilterField;
+                            const matches = filterSearch
+                                ? distinctValues[field].filter((value) =>
+                                    value.toLowerCase().includes(filterSearch.toLowerCase()))
+                                : distinctValues[field];
+                            const visible = matches.slice(0, MAX_FILTER_MENU_ITEMS);
+                            const hiddenCount = matches.length - visible.length;
+                            return [
+                                <MenuItem key="select-all" onClick={() => selectAllValues(field)} sx={menuItemSx}>
+                                    Select All
+                                </MenuItem>,
+                                <MenuItem key="clear-all" onClick={() => clearAllValues(field)} sx={menuItemSx}>
+                                    Clear All
+                                </MenuItem>,
+                                // Plain <li> rather than a MenuItem - this is a text
+                                // input, not a selectable option, and stopping
+                                // keydown propagation (besides Escape, which must
+                                // still reach the Menu to close it) keeps MenuList's
+                                // own letter-key typeahead from hijacking what's
+                                // typed here.
+                                <Box
+                                    key="search"
+                                    component="li"
+                                    onKeyDown={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
+                                    sx={{ px: 1.5, py: 0.75, listStyle: "none" }}
                                 >
-                                    <Checkbox
-                                        size="small"
-                                        checked={!excludedValues[headerMenu.field as FilterField].has(value)}
-                                        sx={checkboxSx}
-                                        tabIndex={-1}
-                                        disableRipple
+                                    <Box
+                                        component="input"
+                                        autoFocus
+                                        value={filterSearch}
+                                        onChange={(e) => setFilterSearch(e.target.value)}
+                                        placeholder={`Search ${COLUMN_LABELS[field]}…`}
+                                        sx={{
+                                            width: "100%",
+                                            boxSizing: "border-box",
+                                            fontFamily: "var(--font-body)",
+                                            fontSize: "0.85rem",
+                                            padding: "6px 8px",
+                                            borderRadius: "6px",
+                                            border: "1px solid var(--hairline)",
+                                            backgroundColor: "var(--surface)",
+                                            color: "var(--ink)",
+                                            outline: "none",
+                                        }}
                                     />
-                                    <ListItemText primary={value} />
-                                </MenuItem>
-                            )),
-                        ]
+                                </Box>,
+                                ...visible.map((value) => (
+                                    <MenuItem
+                                        key={`value-${value}`}
+                                        onClick={() => toggleFilterValue(field, value)}
+                                        sx={checkboxItemSx}
+                                    >
+                                        <Checkbox
+                                            size="small"
+                                            checked={!excludedValues[field].has(value)}
+                                            sx={checkboxSx}
+                                            tabIndex={-1}
+                                            disableRipple
+                                        />
+                                        <ListItemText primary={value} />
+                                    </MenuItem>
+                                )),
+                                ...(hiddenCount > 0
+                                    ? [
+                                        <Box
+                                            key="more-hint"
+                                            component="li"
+                                            sx={{
+                                                px: 1.5,
+                                                py: 0.75,
+                                                listStyle: "none",
+                                                fontFamily: "var(--font-body)",
+                                                fontSize: "0.75rem",
+                                                color: "var(--ink-secondary)",
+                                            }}
+                                        >
+                                            +{hiddenCount} more - refine your search to see them
+                                        </Box>,
+                                    ]
+                                    : []),
+                            ];
+                        })()
                         : []),
                 ]}
             </Menu>
