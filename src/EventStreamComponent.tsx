@@ -526,9 +526,10 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     };
     const toggleFilterValue = (field: FilterField, value: string) => {
         // A one-off pick is no longer "every value" even if it happens to
-        // still cover all of them right now - only the Clear All menu item
-        // below sets this flag, so a value arriving later isn't silently
-        // swept in by this instead.
+        // still cover all of them right now - only clearAllValues/
+        // selectAllValues below (and only when acting on the full list, not
+        // a search-narrowed subset - see isFullyExcluded) set this flag, so
+        // a value arriving later isn't silently swept in by this instead.
         setClearedAll((prev) => ({ ...prev, [field]: false }));
         setExcludedValues((prev) => {
             const next = new Set(prev[field]);
@@ -536,13 +537,31 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             return { ...prev, [field]: next };
         });
     };
-    const selectAllValues = (field: FilterField) => {
-        setClearedAll((prev) => ({ ...prev, [field]: false }));
-        setExcludedValues((prev) => ({ ...prev, [field]: new Set() }));
+    // Whether `excluded` covers every value this field currently knows
+    // about - used below to decide whether a Select All/Clear All click
+    // (scoped to whatever's currently search-matched, which is the full
+    // list when there's no search) should set clearedAll, so e.g. clearing
+    // everything via an unfiltered "Clear All" still tracks future growth
+    // (see clearedAll's own comment above), while clearing only a searched
+    // subset correctly does not.
+    const isFullyExcluded = (field: FilterField, excluded: Set<string>) =>
+        distinctValues[field].length > 0 && distinctValues[field].every((value) => excluded.has(value));
+    // targetValues is whatever the menu's search box currently matches
+    // (the full distinctValues[field] list when the search box is empty) -
+    // not the (possibly further capped) visible slice - so e.g. searching
+    // "Market" on a system with thousands of stops and clicking Clear All
+    // excludes every matching stop, not just the ~100 currently rendered.
+    const selectAllValues = (field: FilterField, targetValues: string[]) => {
+        const next = new Set(excludedValues[field]);
+        targetValues.forEach((value) => next.delete(value));
+        setExcludedValues({ ...excludedValues, [field]: next });
+        setClearedAll({ ...clearedAll, [field]: isFullyExcluded(field, next) });
     };
-    const clearAllValues = (field: FilterField) => {
-        setClearedAll((prev) => ({ ...prev, [field]: true }));
-        setExcludedValues((prev) => ({ ...prev, [field]: new Set(distinctValues[field]) }));
+    const clearAllValues = (field: FilterField, targetValues: string[]) => {
+        const next = new Set(excludedValues[field]);
+        targetValues.forEach((value) => next.add(value));
+        setExcludedValues({ ...excludedValues, [field]: next });
+        setClearedAll({ ...clearedAll, [field]: isFullyExcluded(field, next) });
     };
     // Resets both filter columns at once - the "no results" empty state's
     // way out, as opposed to selectAllValues above which only ever touches
@@ -1068,13 +1087,15 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                 : distinctValues[field];
                             const visible = matches.slice(0, MAX_FILTER_MENU_ITEMS);
                             const hiddenCount = matches.length - visible.length;
+                            // Select All/Clear All act on `matches` - the full
+                            // search-matched set, not `visible` (which is further
+                            // capped for rendering) - so e.g. searching "Market"
+                            // and clicking Clear All excludes every matching stop,
+                            // not just the ~100 currently rendered. Label reflects
+                            // that scope whenever a search is active, rather than
+                            // reading as "everything" when it isn't.
+                            const scoped = filterSearch.length > 0;
                             return [
-                                <MenuItem key="select-all" onClick={() => selectAllValues(field)} sx={menuItemSx}>
-                                    Select All
-                                </MenuItem>,
-                                <MenuItem key="clear-all" onClick={() => clearAllValues(field)} sx={menuItemSx}>
-                                    Clear All
-                                </MenuItem>,
                                 // Plain <li> rather than a MenuItem - this is a text
                                 // input, not a selectable option, and stopping
                                 // keydown propagation (besides Escape, which must
@@ -1085,7 +1106,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                     key="search"
                                     component="li"
                                     onKeyDown={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
-                                    sx={{ px: 1.5, py: 0.75, listStyle: "none" }}
+                                    sx={{ display: "flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.75, listStyle: "none" }}
                                 >
                                     <Box
                                         component="input"
@@ -1094,7 +1115,8 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                         onChange={(e) => setFilterSearch(e.target.value)}
                                         placeholder={`Search ${COLUMN_LABELS[field]}…`}
                                         sx={{
-                                            width: "100%",
+                                            flex: "1 1 auto",
+                                            minWidth: 0,
                                             boxSizing: "border-box",
                                             fontFamily: "var(--font-body)",
                                             fontSize: "0.85rem",
@@ -1106,7 +1128,39 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                                             outline: "none",
                                         }}
                                     />
+                                    {scoped && (
+                                        <Box
+                                            component="button"
+                                            type="button"
+                                            onClick={() => setFilterSearch("")}
+                                            aria-label={`Clear ${COLUMN_LABELS[field]} search`}
+                                            sx={{
+                                                flexShrink: 0,
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                width: 24,
+                                                height: 24,
+                                                fontSize: "0.9rem",
+                                                lineHeight: 1,
+                                                color: "var(--ink-secondary)",
+                                                backgroundColor: "transparent",
+                                                border: "none",
+                                                borderRadius: "50%",
+                                                cursor: "pointer",
+                                                "&:hover": { color: "var(--coral)" },
+                                            }}
+                                        >
+                                            &times;
+                                        </Box>
+                                    )}
                                 </Box>,
+                                <MenuItem key="select-all" onClick={() => selectAllValues(field, matches)} sx={menuItemSx}>
+                                    { scoped ? "Select All Matching" : "Select All" }
+                                </MenuItem>,
+                                <MenuItem key="clear-all" onClick={() => clearAllValues(field, matches)} sx={menuItemSx}>
+                                    { scoped ? "Clear All Matching" : "Clear All" }
+                                </MenuItem>,
                                 ...visible.map((value) => (
                                     <MenuItem
                                         key={`value-${value}`}
