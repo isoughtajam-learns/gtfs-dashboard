@@ -10,6 +10,8 @@ import { routeLineLabel } from "./lineLabel.ts";
 import TransferIndicators from "./TransferIndicators.tsx";
 import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
 import { hasTransfers } from "./transferUtils.ts";
+import { fetchAllLines, fetchAllStops } from "./filterOptions.ts";
+import type { LineSummary } from "./filterOptions.ts";
 
 type TripUpdate = {
     trip_id: string;
@@ -43,6 +45,14 @@ type StreamedUpdate = TripUpdate & { seq: number };
 // The server names every event, so `onmessage` (unnamed events only) never fires.
 const EVENT_NAME = "trip_update";
 const MAX_MESSAGES = 50;
+// A system's Station list in particular can run into the thousands
+// (SF-MTA: ~2,200) - mounting every one of them as a MenuItem is what makes
+// opening the filter menu visibly slow there, since MUI's Menu/Popover has
+// to measure the whole list even though menuPaperSx's maxHeight only clips
+// it visually. The user doesn't need to see every value immediately, so the
+// checklist below caps how many it renders and offers a search box instead
+// of an unbounded scroll.
+const MAX_FILTER_MENU_ITEMS = 100;
 const MAX_RETRY_DELAY_MS = 30_000;
 
 // Every cell sets fontFamily explicitly rather than relying on
@@ -79,17 +89,27 @@ const COLUMN_LABELS: Record<SortField, string> = {
     next: "Next",
 };
 
+// Structural, not StreamedUpdate-specific: also matches LineSummary (see
+// filterOptions.ts) field-for-field, so the exact same formatting runs
+// against both a live message and a fetched "all lines" row below.
+type LineFields = {
+    route_id?: string | null;
+    route_short_name?: string | null;
+    route_long_name?: string | null;
+    trip_headsign: string | null;
+};
+
 // Line column's own fallback (trip_headsign) for whenever routeLineLabel
 // returns null - shared with the filter checklist/sort below, and distinct
 // from TripDetailCard's own fallback for the same shared helper (see
 // lineLabel.ts's own comment on why that differs per call site).
-const lineLabel = (message: StreamedUpdate): string | null =>
+const lineLabel = (message: LineFields): string | null =>
     routeLineLabel(message.route_id, message.route_short_name, message.route_long_name) ?? message.trip_headsign;
 
 // GTFS trip_headsign is nullable (see the Line cell's own null check below);
 // group those rows under one filterable bucket rather than dropping them.
 const NO_LINE = "(No line)";
-const lineFilterValue = (message: StreamedUpdate) => lineLabel(message) ?? NO_LINE;
+const lineFilterValue = (message: LineFields) => lineLabel(message) ?? NO_LINE;
 
 // Sort/filter state persists across reloads (and across switching transit
 // systems, matching this app's existing in-session behavior of not
@@ -99,7 +119,24 @@ const FILTERS_STORAGE_KEY = "irl-transit:eventFilters";
 type StoredFilters = {
     sort: { field: SortField; direction: SortDirection } | null;
     excludedValues: Record<FilterField, string[]>;
+    // Optional: absent in filters stored before this field existed - see
+    // clearedAll's own comment below for what it means.
+    clearedAll?: Record<FilterField, boolean>;
 };
+
+// Cheap 32-bit FNV-1a hash of an already-sorted name list, joined with a
+// separator no stop/line name can contain. Used below to tell "the list's
+// contents changed" apart from "same length, different members" (e.g. one
+// buffer-only value aging out of the live window as a different one
+// appears) without diffing the full arrays on every render.
+function hashOrderedNames(names: string[]): string {
+    let hash = 0x811c9dc5;
+    for (const ch of names.join("\u0000")) {
+        hash ^= ch.codePointAt(0) ?? 0;
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16);
+}
 
 // localStorage access can throw (Safari private browsing, sandboxed
 // iframes, disabled storage) - persistence is a nice-to-have, not worth
@@ -319,7 +356,30 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             stop_name: new Set(stored?.stop_name ?? []),
         };
     });
+    // Whether the user deliberately put a column into "every value
+    // excluded" state via the Clear All menu item, as opposed to
+    // excludedValues[field] merely happening to contain every value
+    // distinctValues currently knows about. Set only by the user actions
+    // below (clearAllValues/selectAllValues/toggleFilterValue/
+    // resetAllFilters) - never re-derived from comparing excludedValues
+    // against distinctValues, which is what let a system switch (which
+    // transiently empties distinctValues while the new system's schedule
+    // loads) get mistaken for "the user cleared everything" and silently
+    // reset a real Clear All from the previous system.
+    const [clearedAll, setClearedAll] = useState<Record<FilterField, boolean>>(() => {
+        const stored = readStoredFilters()?.clearedAll;
+        return {
+            trip_headsign: stored?.trip_headsign ?? false,
+            stop_name: stored?.stop_name ?? false,
+        };
+    });
     const [headerMenu, setHeaderMenu] = useState<{ anchorEl: HTMLElement; field: SortField } | null>(null);
+    // Text typed into the filter checklist's search box - see
+    // MAX_FILTER_MENU_ITEMS above. Scoped to whichever column's menu is
+    // currently open; reset whenever that changes so reopening a menu (or
+    // switching from Line's to Station's) doesn't start pre-filtered on
+    // whatever was typed last time.
+    const [filterSearch, setFilterSearch] = useState("");
     // Below sm, the three column pills (each opening the same headerMenu
     // above) live in a second row that expands/collapses via the toolbar's
     // chevron toggle, rather than always taking up space.
@@ -327,6 +387,37 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
 
     // Which trip's detail card is open, if any - set by clicking a row.
     const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+
+    // IRL-26/IRL-27: every line/stop this system actually has, not just
+    // whatever's in the live buffer right now (see distinctValues below,
+    // which unions these in). Start empty rather than null - the checklist
+    // just shows fewer entries until the fetch resolves, same as it always
+    // has, so there's no loading state to thread through the UI for this.
+    const [allLines, setAllLines] = useState<LineSummary[]>([]);
+    const [allStopNames, setAllStopNames] = useState<string[]>([]);
+
+    // Fires on system switch only - this is schedule data (changes at most
+    // daily), not live data, so it has no business re-running on every SSE
+    // event. Deliberately doesn't block or gate anything else in this
+    // component: the SSE connection effect below starts immediately
+    // regardless, and excludedValues (the user's actual filter selections,
+    // as opposed to the checklist's available options) is untouched by
+    // this fetch's state or outcome either way - a slow or failed fetch
+    // just means the checklist stays buffer-derived a little longer, never
+    // a reason to block the system switch or discard a selection.
+    useEffect(() => {
+        if (!systemId) return;
+        let cancelled = false;
+        setAllLines([]);
+        setAllStopNames([]);
+        void fetchAllLines(systemId)
+            .then((lines) => { if (!cancelled) setAllLines(lines); })
+            .catch((error: unknown) => { if (!cancelled) console.error("Failed to load all lines:", error); });
+        void fetchAllStops(systemId)
+            .then((names) => { if (!cancelled) setAllStopNames(names); })
+            .catch((error: unknown) => { if (!cancelled) console.error("Failed to load all stops:", error); });
+        return () => { cancelled = true; };
+    }, [systemId]);
 
     // Persist sort/filter choices every time they change, not just on
     // unmount, so a mid-session crash or closed tab doesn't lose them.
@@ -337,16 +428,67 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 trip_headsign: Array.from(excludedValues.trip_headsign),
                 stop_name: Array.from(excludedValues.stop_name),
             },
+            clearedAll,
         });
-    }, [sort, excludedValues]);
+    }, [sort, excludedValues, clearedAll]);
 
-    // Distinct values currently in the buffer, for the filter checklists.
-    // Recomputed as messages stream in/age out, so the checklist always
-    // reflects what's actually visible right now.
+    // Distinct values for the filter checklists: the full set from
+    // allLines/allStopNames once loaded, unioned with whatever's in the
+    // live buffer right now (covers the window before that fetch resolves,
+    // and the edge case of a live trip whose (route, headsign) pair isn't
+    // in the schedule snapshot yet).
     const distinctValues: Record<FilterField, string[]> = useMemo(() => ({
-        trip_headsign: Array.from(new Set(messages.map((m) => lineFilterValue(m)))).sort(),
-        stop_name: Array.from(new Set(messages.map((m) => m.stop_name))).sort(),
-    }), [messages]);
+        trip_headsign: Array.from(new Set([
+            ...allLines.map((line) => lineFilterValue(line)),
+            ...messages.map((m) => lineFilterValue(m)),
+        ])).sort(),
+        stop_name: Array.from(new Set([
+            ...allStopNames,
+            ...messages.map((m) => m.stop_name),
+        ])).sort(),
+    }), [messages, allLines, allStopNames]);
+
+    // clearAllValues below snapshots distinctValues[field] into excludedValues
+    // at click time - fine once allLines/allStopNames have loaded, but if a
+    // user hits "Clear All" in the brief window before that fetch resolves,
+    // the snapshot only covers the live buffer's handful of values. Without
+    // this, the schedule-wide values that appear a moment later when the
+    // fetch does resolve would silently NOT be excluded, undoing what the
+    // user just asked for. Keeps any field the user explicitly Cleared All
+    // (see clearedAll above - never inferred from distinctValues content)
+    // in sync as distinctValues changes shape, rather than freezing it at
+    // whatever was known at click time. Skipped while distinctValues[field]
+    // is transiently empty (a system switch resets messages/allLines before
+    // the new system's fetch resolves) so that gap can't be mistaken for
+    // "nothing to exclude" and wipe out the carried-over Clear All.
+    // Compares a hash of the (sorted) list rather than its length - a
+    // same-size swap (one buffer-only value ages out as a different one
+    // appears) changes the hash even though the count doesn't, which a
+    // length check alone would miss.
+    const lastSyncedHashRef = useRef<Record<FilterField, string | null>>({
+        trip_headsign: null,
+        stop_name: null,
+    });
+    useEffect(() => {
+        // Decide what (if anything) needs resyncing - and mutate
+        // lastSyncedHashRef - here in the effect body, not inside the
+        // setExcludedValues updater below: React (StrictMode, dev only)
+        // double-invokes updater functions to catch impure ones, and a ref
+        // mutation inside the updater is exactly that - the first
+        // invocation would compute the real update, but the second sees
+        // the ref already mutated to match, concludes "no change", and
+        // that's the result that gets applied.
+        const updates: Partial<Record<FilterField, Set<string>>> = {};
+        (Object.keys(distinctValues) as FilterField[]).forEach((field) => {
+            if (!clearedAll[field] || distinctValues[field].length === 0) return;
+            const hash = hashOrderedNames(distinctValues[field]);
+            if (hash === lastSyncedHashRef.current[field]) return;
+            lastSyncedHashRef.current[field] = hash;
+            updates[field] = new Set(distinctValues[field]);
+        });
+        if (Object.keys(updates).length === 0) return;
+        setExcludedValues((prev) => ({ ...prev, ...updates }));
+    }, [distinctValues, clearedAll]);
 
     const visibleMessages = useMemo(() => {
         const filtered = messages.filter((m) =>
@@ -365,9 +507,14 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         return sorted;
     }, [messages, excludedValues, sort]);
 
-    const openHeaderMenu = (field: SortField) => (event: MouseEvent<HTMLElement>) =>
+    const openHeaderMenu = (field: SortField) => (event: MouseEvent<HTMLElement>) => {
+        setFilterSearch("");
         setHeaderMenu({ anchorEl: event.currentTarget, field });
-    const closeHeaderMenu = () => setHeaderMenu(null);
+    };
+    const closeHeaderMenu = () => {
+        setHeaderMenu(null);
+        setFilterSearch("");
+    };
 
     const applySort = (field: SortField, direction: SortDirection) => {
         setSort({ field, direction });
@@ -378,16 +525,98 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         closeHeaderMenu();
     };
     const toggleFilterValue = (field: FilterField, value: string) => {
+        // A one-off pick is no longer "every value" even if it happens to
+        // still cover all of them right now - only clearAllValues/
+        // selectAllValues below (and only when acting on the full list, not
+        // a search-narrowed subset - see isFullyExcluded) set this flag, so
+        // a value arriving later isn't silently swept in by this instead.
+        setClearedAll((prev) => ({ ...prev, [field]: false }));
         setExcludedValues((prev) => {
             const next = new Set(prev[field]);
             if (next.has(value)) next.delete(value); else next.add(value);
             return { ...prev, [field]: next };
         });
     };
-    const selectAllValues = (field: FilterField) =>
-        setExcludedValues((prev) => ({ ...prev, [field]: new Set() }));
-    const clearAllValues = (field: FilterField) =>
-        setExcludedValues((prev) => ({ ...prev, [field]: new Set(distinctValues[field]) }));
+    // Whether `excluded` covers every value this field currently knows
+    // about - used below to decide whether a Select All/Clear All click
+    // (scoped to whatever's currently search-matched, which is the full
+    // list when there's no search) should set clearedAll, so e.g. clearing
+    // everything via an unfiltered "Clear All" still tracks future growth
+    // (see clearedAll's own comment above), while clearing only a searched
+    // subset correctly does not.
+    const isFullyExcluded = (field: FilterField, excluded: Set<string>) =>
+        distinctValues[field].length > 0 && distinctValues[field].every((value) => excluded.has(value));
+    // targetValues is whatever the menu's search box currently matches
+    // (the full distinctValues[field] list when the search box is empty) -
+    // not the (possibly further capped) visible slice - so e.g. searching
+    // "Market" on a system with thousands of stops and clicking Clear All
+    // excludes every matching stop, not just the ~100 currently rendered.
+    const selectAllValues = (field: FilterField, targetValues: string[]) => {
+        const next = new Set(excludedValues[field]);
+        targetValues.forEach((value) => next.delete(value));
+        setExcludedValues({ ...excludedValues, [field]: next });
+        setClearedAll({ ...clearedAll, [field]: isFullyExcluded(field, next) });
+    };
+    const clearAllValues = (field: FilterField, targetValues: string[]) => {
+        const next = new Set(excludedValues[field]);
+        targetValues.forEach((value) => next.add(value));
+        setExcludedValues({ ...excludedValues, [field]: next });
+        setClearedAll({ ...clearedAll, [field]: isFullyExcluded(field, next) });
+    };
+    // Resets both filter columns at once - the "no results" empty state's
+    // way out, as opposed to selectAllValues above which only ever touches
+    // one column (the header menu's own "Select All").
+    const resetAllFilters = () => {
+        setClearedAll({ trip_headsign: false, stop_name: false });
+        setExcludedValues({ trip_headsign: new Set(), stop_name: new Set() });
+    };
+
+    // Shown in place of rows when the filters (not a genuinely empty
+    // buffer - see the messages.length===0 branch below) exclude every
+    // message. Deliberately rendered *inside* the existing table/card
+    // regions rather than replacing them outright - on sm+ that keeps the
+    // header row (and its per-column filter icons) mounted, so a desktop
+    // user who filtered down to nothing can still reopen a single column's
+    // checklist to uncheck one value, not just blow away every filter via
+    // Clear filters below.
+    const noResultsContent = (
+        <Box
+            role="status"
+            aria-live="polite"
+            sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 1.5,
+                py: 8,
+            }}
+        >
+            <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                No trips match the current filters
+            </Box>
+            <Box
+                component="button"
+                onClick={resetAllFilters}
+                sx={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: "0.75rem",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    fontWeight: 600,
+                    color: "var(--coral)",
+                    backgroundColor: "transparent",
+                    border: "1px solid var(--hairline)",
+                    borderRadius: "20px",
+                    px: 1.5,
+                    py: 0.5,
+                    cursor: "pointer",
+                }}
+            >
+                Clear filters
+            </Box>
+        </Box>
+    );
 
     // Shared by the table headers (sm+) and the mobile toolbar buttons.
     const isColumnActive = (field: SortField) =>
@@ -687,7 +916,13 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {visibleMessages.map((message) => (
+                        {visibleMessages.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={4} sx={{ border: 0 }}>
+                                    {noResultsContent}
+                                </TableCell>
+                            </TableRow>
+                        ) : visibleMessages.map((message) => (
                             <TableRow
                                 key={ message.seq }
                                 onClick={() => setSelectedTripId(message.trip_id)}
@@ -742,7 +977,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 above, outside this branch, so it stays visible even with no
                 data yet. */}
             <Box sx={{ display: { xs: "block", sm: "none" } }}>
-                {visibleMessages.map((message) => {
+                {visibleMessages.length === 0 ? noResultsContent : visibleMessages.map((message) => {
                     const rowHasTransfers = hasTransfers(message.intra_system_transfers, message.inter_system_transfer_systems);
                     return (
                     <Box
@@ -844,30 +1079,124 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                         ]
                         : []),
                     ...(isFilterField(headerMenu.field)
-                        ? [
-                            <MenuItem key="select-all" onClick={() => selectAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
-                                Select All
-                            </MenuItem>,
-                            <MenuItem key="clear-all" onClick={() => clearAllValues(headerMenu.field as FilterField)} sx={menuItemSx}>
-                                Clear All
-                            </MenuItem>,
-                            ...distinctValues[headerMenu.field as FilterField].map((value) => (
-                                <MenuItem
-                                    key={`value-${value}`}
-                                    onClick={() => toggleFilterValue(headerMenu.field as FilterField, value)}
-                                    sx={checkboxItemSx}
+                        ? (() => {
+                            const field = headerMenu.field as FilterField;
+                            const matches = filterSearch
+                                ? distinctValues[field].filter((value) =>
+                                    value.toLowerCase().includes(filterSearch.toLowerCase()))
+                                : distinctValues[field];
+                            const visible = matches.slice(0, MAX_FILTER_MENU_ITEMS);
+                            const hiddenCount = matches.length - visible.length;
+                            // Select All/Clear All act on `matches` - the full
+                            // search-matched set, not `visible` (which is further
+                            // capped for rendering) - so e.g. searching "Market"
+                            // and clicking Clear All excludes every matching stop,
+                            // not just the ~100 currently rendered. Label reflects
+                            // that scope whenever a search is active, rather than
+                            // reading as "everything" when it isn't.
+                            const scoped = filterSearch.length > 0;
+                            return [
+                                // Plain <li> rather than a MenuItem - this is a text
+                                // input, not a selectable option, and stopping
+                                // keydown propagation (besides Escape, which must
+                                // still reach the Menu to close it) keeps MenuList's
+                                // own letter-key typeahead from hijacking what's
+                                // typed here.
+                                <Box
+                                    key="search"
+                                    component="li"
+                                    onKeyDown={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
+                                    sx={{ display: "flex", alignItems: "center", gap: 0.5, px: 1.5, py: 0.75, listStyle: "none" }}
                                 >
-                                    <Checkbox
-                                        size="small"
-                                        checked={!excludedValues[headerMenu.field as FilterField].has(value)}
-                                        sx={checkboxSx}
-                                        tabIndex={-1}
-                                        disableRipple
+                                    <Box
+                                        component="input"
+                                        autoFocus
+                                        value={filterSearch}
+                                        onChange={(e) => setFilterSearch(e.target.value)}
+                                        placeholder={`Search ${COLUMN_LABELS[field]}…`}
+                                        sx={{
+                                            flex: "1 1 auto",
+                                            minWidth: 0,
+                                            boxSizing: "border-box",
+                                            fontFamily: "var(--font-body)",
+                                            fontSize: "0.85rem",
+                                            padding: "6px 8px",
+                                            borderRadius: "6px",
+                                            border: "1px solid var(--hairline)",
+                                            backgroundColor: "var(--surface)",
+                                            color: "var(--ink)",
+                                            outline: "none",
+                                        }}
                                     />
-                                    <ListItemText primary={value} />
-                                </MenuItem>
-                            )),
-                        ]
+                                    {scoped && (
+                                        <Box
+                                            component="button"
+                                            type="button"
+                                            onClick={() => setFilterSearch("")}
+                                            aria-label={`Clear ${COLUMN_LABELS[field]} search`}
+                                            sx={{
+                                                flexShrink: 0,
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                width: 24,
+                                                height: 24,
+                                                fontSize: "0.9rem",
+                                                lineHeight: 1,
+                                                color: "var(--ink-secondary)",
+                                                backgroundColor: "transparent",
+                                                border: "none",
+                                                borderRadius: "50%",
+                                                cursor: "pointer",
+                                                "&:hover": { color: "var(--coral)" },
+                                            }}
+                                        >
+                                            &times;
+                                        </Box>
+                                    )}
+                                </Box>,
+                                <MenuItem key="select-all" onClick={() => selectAllValues(field, matches)} sx={menuItemSx}>
+                                    { scoped ? "Select All Matching" : "Select All" }
+                                </MenuItem>,
+                                <MenuItem key="clear-all" onClick={() => clearAllValues(field, matches)} sx={menuItemSx}>
+                                    { scoped ? "Clear All Matching" : "Clear All" }
+                                </MenuItem>,
+                                ...visible.map((value) => (
+                                    <MenuItem
+                                        key={`value-${value}`}
+                                        onClick={() => toggleFilterValue(field, value)}
+                                        sx={checkboxItemSx}
+                                    >
+                                        <Checkbox
+                                            size="small"
+                                            checked={!excludedValues[field].has(value)}
+                                            sx={checkboxSx}
+                                            tabIndex={-1}
+                                            disableRipple
+                                        />
+                                        <ListItemText primary={value} />
+                                    </MenuItem>
+                                )),
+                                ...(hiddenCount > 0
+                                    ? [
+                                        <Box
+                                            key="more-hint"
+                                            component="li"
+                                            sx={{
+                                                px: 1.5,
+                                                py: 0.75,
+                                                listStyle: "none",
+                                                fontFamily: "var(--font-body)",
+                                                fontSize: "0.75rem",
+                                                color: "var(--ink-secondary)",
+                                            }}
+                                        >
+                                            +{hiddenCount} more - refine your search to see them
+                                        </Box>,
+                                    ]
+                                    : []),
+                            ];
+                        })()
                         : []),
                 ]}
             </Menu>
