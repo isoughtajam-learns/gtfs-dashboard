@@ -49,6 +49,52 @@ This only matters if the domain is proxied through Cloudflare (orange-clouded) w
 "Full" or "Full (strict)" — that mode requires Cloudflare's edge to reach the origin over HTTPS on 443,
 which needs both port 443 open in the EC2 security group and this TLS setup in place, or it 522s.
 
+#### Releasing a new version
+
+Releases are cut from `version.json` and a `vX.Y.Z` git tag, then rolled out by `deployment/deploy.sh`.
+There's no CI for any of this — it's all run by hand from a machine with `aws`, `docker`, and
+`terraform` set up against this stack's AWS account/region (`us-east-2` by default — see
+`deployment/variables.tf`), with `../gtfs-realtime/deployment` already applied (this stack looks up
+that stack's ECS cluster/execution role/secrets by name, not by state reference).
+
+1. **Bump `version.json`** to the version you intend to release (e.g. `"0.5.0"` for a minor release,
+   `"1.0.0"` for a major one), in the same PR as the change being released (or a small follow-up PR)
+   targeting `main`. This is the actual version number that ends up tagged — the bump type you pass in
+   step 3 is only a sanity check against it, not what sets the number.
+2. **Merge that PR to `main`.** `tag-release.sh` only ever tags `origin/main`'s current tip (never a
+   local-only commit or another branch), so the bump has to be merged and pushed first.
+3. **Tag the release**, from the repo root:
+   ```
+   ./deployment/tag-release.sh [patch|minor|major]
+   ```
+   Defaults to `patch` if you omit the argument. It fetches `origin/main`, computes what the next
+   `patch`/`minor`/`major` version would be from the latest `vX.Y.Z` tag, and checks that `version.json`
+   at `origin/main`'s tip is at least that version:
+   - `patch` — a bug fix or small change, e.g. `0.4.0` → `0.4.1`.
+   - `minor` — a new feature or enhancement that doesn't break anything, e.g. `0.4.0` → `0.5.0`.
+   - `major` — a breaking change, e.g. `0.4.0` → `1.0.0`.
+
+   If `version.json` wasn't bumped far enough for the type you asked for, it errors out and tells you
+   to update `version.json` instead of tagging the wrong thing. Otherwise it prints what it's about to
+   do and asks to confirm (`Tag origin/main HEAD as vX.Y.Z and push? [y/N]`) before tagging and pushing.
+4. **Deploy the tag**, from the repo root:
+   ```
+   ./deployment/deploy.sh          # deploys the latest vX.Y.Z tag reachable from origin/main
+   ./deployment/deploy.sh v0.5.0   # or deploy a specific tag
+   ```
+   This refuses to deploy a tag that isn't reachable from `origin/main` (never an unmerged/unreviewed
+   commit) or whose `version.json` value has already been shipped before (`scripts/check-version-unique.sh`
+   — catches a forgotten bump), then:
+   - logs in to ECR,
+   - builds the frontend image **from the tag itself** (`git archive $TAG`, never your local working
+     tree — so uncommitted/unpushed local changes can't accidentally ship),
+   - pushes the image,
+   - runs `terraform plan` with that tag as `frontend_image_tag` and shows you the plan,
+   - prompts to confirm (`Apply this plan and roll out frontend $TAG? [y/N]`) before applying and
+     rolling out the ECS service.
+5. Once applied, the script prints the dashboard URL (`terraform output -raw app_url`) — load it and
+   confirm the new version is live before considering the release done.
+
 ## Appreciation
 https://gtfs.org/documentation/overview/ - details on the spec for Realtime and Schedule data, both of which are used here
 
