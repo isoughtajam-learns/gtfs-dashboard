@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { StreamedUpdate, TripUpdate } from "./tripUpdate.ts";
+import type { OperatingHoursStatus, StreamedUpdate, TripUpdate } from "./tripUpdate.ts";
 
 // The server names every event, so `onmessage` (unnamed events only) never fires.
 const EVENT_NAME = "trip_update";
+const OPERATING_HOURS_EVENT_NAME = "operating_hours";
 const MAX_MESSAGES = 50;
 const MAX_RETRY_DELAY_MS = 30_000;
 
@@ -17,6 +18,13 @@ export type TripUpdateStream = {
     // that state is indistinguishable from "still loading" and the spinner
     // never goes away. Reset on every system switch.
     settled: boolean;
+    // Authoritative, schedule-derived answer to the same ambiguity `settled`
+    // above only approximates - see models.OperatingHoursStatus. Null until
+    // the backend sends its first operating_hours event (or for a system
+    // the backend can't determine this for at all, e.g. no known
+    // timezone/calendar data - `settled` stays the fallback in that case).
+    // Reset to null on every system switch.
+    outsideOperatingHours: OperatingHoursStatus | null;
 };
 
 // Owns the live SSE connection to a transit system's trip-update feed:
@@ -28,6 +36,9 @@ export function useTripUpdateStream(systemId: string): TripUpdateStream {
     const [messages, setMessages] = useState<StreamedUpdate[]>([]);
     const [connected, setConnected] = useState(false);
     const [settled, setSettled] = useState(false);
+    const [outsideOperatingHours, setOutsideOperatingHours] = useState<OperatingHoursStatus | null>(
+        null,
+    );
     // A ref, not an effect-local counter: it has to outlive reconnects and StrictMode's
     // double-mount, both of which would otherwise restart numbering into a live list.
     const seqRef = useRef(0);
@@ -39,6 +50,7 @@ export function useTripUpdateStream(systemId: string): TripUpdateStream {
         // Switching systems starts a fresh window rather than mixing feeds.
         setMessages([]);
         setSettled(false);
+        setOutsideOperatingHours(null);
 
         let eventSource: EventSource | null = null;
         let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -84,6 +96,14 @@ export function useTripUpdateStream(systemId: string): TripUpdateStream {
                 }
             });
 
+            eventSource.addEventListener(OPERATING_HOURS_EVENT_NAME, (event) => {
+                try {
+                    setOutsideOperatingHours(JSON.parse(event.data) as OperatingHoursStatus);
+                } catch {
+                    console.error("Malformed SSE payload:", event.data);
+                }
+            });
+
             eventSource.onerror = () => {
                 setConnected(false);
 
@@ -109,5 +129,5 @@ export function useTripUpdateStream(systemId: string): TripUpdateStream {
         };
     }, [systemId]);
 
-    return { messages, connected, settled };
+    return { messages, connected, settled, outsideOperatingHours };
 }

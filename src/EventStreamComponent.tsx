@@ -44,7 +44,7 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     // Which trip's detail card is open, if any - set by clicking a row.
     const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
-    const { messages, connected, settled } = useTripUpdateStream(systemId);
+    const { messages, connected, settled, outsideOperatingHours } = useTripUpdateStream(systemId);
     const {
         sort,
         excludedValues,
@@ -138,7 +138,27 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             />
 
             { messages.length === 0 ? (
-                settled ? (
+                outsideOperatingHours?.outside_operating_hours ? (
+                    // Authoritative, schedule-derived answer (see
+                    // useTripUpdateStream's outsideOperatingHours comment) -
+                    // takes precedence over the settled/spinner guess below,
+                    // which stays the fallback for a system this can't be
+                    // determined for (no known timezone/calendar data).
+                    <StatusMessage>
+                        <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                            Outside operating hours
+                            {outsideOperatingHours.next_service_starts_at && (
+                                <>
+                                    {" "}- back at{" "}
+                                    {new Date(outsideOperatingHours.next_service_starts_at).toLocaleTimeString([], {
+                                        hour: "numeric",
+                                        minute: "2-digit",
+                                    })}
+                                </>
+                            )}
+                        </Box>
+                    </StatusMessage>
+                ) : settled ? (
                     // Confirmed, not just "haven't heard back yet": this
                     // system's poll cycle had a fair chance (see
                     // useTripUpdateStream's `settled` comment) and produced

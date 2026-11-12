@@ -23,6 +23,15 @@ export type TripUpdate = {
     inter_system_transfer_systems?: string[];
 };
 
+// Mirrors models.OperatingHoursStatus in the gtfs-realtime repo - payload
+// for transit_feed()'s `operating_hours` SSE event (see
+// useTripUpdateStream.ts). Emitted once per connection and whenever the
+// status changes, not on every poll.
+export type OperatingHoursStatus = {
+    outside_operating_hours: boolean;
+    next_service_starts_at: string | null;
+};
+
 // `seq` is client-assigned at insert/update time, since nothing in the raw
 // payload is otherwise guaranteed unique - it doubles as the row's React key,
 // so bumping it on every update (not just on first insert) re-triggers the
