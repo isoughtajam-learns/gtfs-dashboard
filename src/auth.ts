@@ -6,6 +6,7 @@
 
 export type AuthUser = {
     email: string;
+    username: string;
 };
 
 class AuthError extends Error {
@@ -28,22 +29,28 @@ async function parseAuthResponse(res: Response): Promise<AuthUser> {
     return (await res.json()) as AuthUser;
 }
 
-export async function signup(email: string, password: string): Promise<AuthUser> {
+export async function signup(
+    email: string,
+    username: string,
+    password: string,
+): Promise<AuthUser> {
     const res = await fetch("/api/auth/signup", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, username, password }),
     });
     return parseAuthResponse(res);
 }
 
-export async function login(email: string, password: string): Promise<AuthUser> {
+// Sign-in uses username, not email - see models.AppUser's own docstring
+// (gtfs-realtime repo) for why.
+export async function login(username: string, password: string): Promise<AuthUser> {
     const res = await fetch("/api/auth/login", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
     });
     return parseAuthResponse(res);
 }

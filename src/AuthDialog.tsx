@@ -61,12 +61,14 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
     const { login, signup } = useAuth();
     const [mode, setMode] = useState<"login" | "signup">("login");
     const [email, setEmail] = useState("");
+    const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
 
     const reset = () => {
         setEmail("");
+        setUsername("");
         setPassword("");
         setError(null);
         setSubmitting(false);
@@ -81,7 +83,11 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
         event.preventDefault();
         setError(null);
         setSubmitting(true);
-        const action = mode === "login" ? login(email, password) : signup(email, password);
+        // Sign-in uses username, not email - see models.AppUser's own
+        // docstring (gtfs-realtime repo) for why.
+        const action = mode === "login"
+            ? login(username, password)
+            : signup(email, username, password);
         action
             .then(() => { reset(); onClose(); })
             .catch((err: unknown) => {
@@ -117,14 +123,29 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
                 </IconButton>
             </Box>
             <Box component="form" onSubmit={handleSubmit} sx={{ p: 2, display: "flex", flexDirection: "column", gap: 1.5 }}>
+                { mode === "signup" && (
+                    <Box
+                        component="input"
+                        type="email"
+                        required
+                        autoFocus
+                        placeholder="Email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        sx={fieldSx}
+                    />
+                )}
                 <Box
                     component="input"
-                    type="email"
+                    type="text"
                     required
-                    autoFocus
-                    placeholder="Email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    autoFocus={mode === "login"}
+                    autoComplete="username"
+                    minLength={3}
+                    maxLength={30}
+                    placeholder="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     sx={fieldSx}
                 />
                 <Box
@@ -132,6 +153,7 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
                     type="password"
                     required
                     minLength={8}
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
                     placeholder="Password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

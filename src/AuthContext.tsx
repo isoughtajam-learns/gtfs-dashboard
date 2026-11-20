@@ -9,8 +9,8 @@ type AuthContextValue = {
     // callers (Header) avoid flashing "Sign in" for a moment before a
     // real session cookie resolves.
     loading: boolean;
-    login: (email: string, password: string) => Promise<void>;
-    signup: (email: string, password: string) => Promise<void>;
+    login: (username: string, password: string) => Promise<void>;
+    signup: (email: string, username: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
 };
 
@@ -30,11 +30,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return () => { cancelled = true; };
     }, []);
 
-    const login = useCallback(async (email: string, password: string) => {
-        setUser(await authApi.login(email, password));
+    const login = useCallback(async (username: string, password: string) => {
+        setUser(await authApi.login(username, password));
     }, []);
-    const signup = useCallback(async (email: string, password: string) => {
-        setUser(await authApi.signup(email, password));
+    const signup = useCallback(async (email: string, username: string, password: string) => {
+        setUser(await authApi.signup(email, username, password));
     }, []);
     const logout = useCallback(async () => {
         await authApi.logout();

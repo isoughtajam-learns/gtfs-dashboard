@@ -213,7 +213,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     <BellIcon hasAlerts={hasAlerts} />
                 </IconButton>}
                 {/* Phase 4 (.claude/plans/development.md): the only sign-in
-                    entry point - logged-in state shows the email as a
+                    entry point - logged-in state shows the username as a
                     plain label (not a button) since "Log out" already
                     lives in the hamburger menu below, alongside the
                     conditionally-added Settings page link. */}
@@ -230,7 +230,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                             whiteSpace: "nowrap",
                         }}
                     >
-                        {user.email}
+                        {user.username}
                     </Box>
                 ) : (
                     <Box
