@@ -1,0 +1,92 @@
+// Phase 4 (.claude/plans/development.md): typed fetch helpers for the
+// backend's /saved_stations* endpoints. Mirrors models.SavedStationOut in
+// gtfs-realtime - keyed by stop_name, not stop_id (see that model's own
+// docstring for why).
+
+export type SavedStation = {
+    stop_name: string;
+    alert_enabled: boolean;
+    alert_lead_minutes: number;
+    transit_system?: string | null;
+};
+
+export class SavedStationsError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+        super(message);
+        this.status = status;
+    }
+}
+
+async function parse<T>(res: Response, emptyOn404 = false): Promise<T> {
+    if (!res.ok) {
+        if (emptyOn404 && res.status === 404) return [] as unknown as T;
+        const body: unknown = await res.json().catch(() => null);
+        const detail =
+            body && typeof body === "object" && "detail" in body
+                ? String((body as { detail: unknown }).detail)
+                : `Request failed: ${res.status}`;
+        throw new SavedStationsError(detail, res.status);
+    }
+    return (await res.json()) as T;
+}
+
+export async function fetchSavedStations(systemId: string): Promise<SavedStation[]> {
+    const res = await fetch(`/api/saved_stations/${encodeURIComponent(systemId)}`, {
+        credentials: "include",
+    });
+    if (res.status === 401) return [];
+    return parse<SavedStation[]>(res);
+}
+
+export async function fetchAllSavedStations(): Promise<SavedStation[]> {
+    const res = await fetch("/api/saved_stations", { credentials: "include" });
+    if (res.status === 401) return [];
+    return parse<SavedStation[]>(res);
+}
+
+export async function saveStation(
+    systemId: string,
+    stopName: string,
+    alertEnabled = true,
+    alertLeadMinutes = 5,
+): Promise<SavedStation> {
+    const res = await fetch(`/api/saved_stations/${encodeURIComponent(systemId)}`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            stop_name: stopName,
+            alert_enabled: alertEnabled,
+            alert_lead_minutes: alertLeadMinutes,
+        }),
+    });
+    return parse<SavedStation>(res);
+}
+
+export async function updateSavedStation(
+    systemId: string,
+    stopName: string,
+    patch: { alert_enabled?: boolean; alert_lead_minutes?: number },
+): Promise<SavedStation> {
+    const res = await fetch(
+        `/api/saved_stations/${encodeURIComponent(systemId)}?stop_name=${encodeURIComponent(stopName)}`,
+        {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patch),
+        },
+    );
+    return parse<SavedStation>(res);
+}
+
+export async function unsaveStation(systemId: string, stopName: string): Promise<void> {
+    const res = await fetch(
+        `/api/saved_stations/${encodeURIComponent(systemId)}?stop_name=${encodeURIComponent(stopName)}`,
+        { method: "DELETE", credentials: "include" },
+    );
+    if (!res.ok && res.status !== 404) {
+        throw new SavedStationsError(`Failed to remove saved station: ${res.status}`, res.status);
+    }
+}

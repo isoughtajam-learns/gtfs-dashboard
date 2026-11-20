@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import { Box, CircularProgress, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from "@mui/material";
+import { Alert, Box, CircularProgress, Snackbar, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import TripDetailCard from "./TripDetailCard.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
+import { useAuth } from "./AuthContext.tsx";
 import { useTripUpdateStream } from "./useTripUpdateStream.ts";
 import { useTripFilters, COLUMN_LABELS } from "./useTripFilters.ts";
+import { useSavedStations } from "./useSavedStations.ts";
+import { useStationAlerts } from "./useStationAlerts.ts";
 import { FilterHeaderMenu, SortFilterIconButton } from "./FilterHeaderMenu.tsx";
 import MobileFilterToolbar from "./MobileFilterToolbar.tsx";
 import { StatusMessage } from "./StatusMessage.tsx";
@@ -45,6 +48,16 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
     const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
     const { messages, connected, settled, outsideOperatingHours } = useTripUpdateStream(systemId);
+    const { user } = useAuth();
+    const {
+        saved: savedStations,
+        savedStopNames,
+        ready: savedStopNamesReady,
+        atLimit: atSaveLimit,
+        save,
+        unsave,
+    } = useSavedStations(systemId);
+    const { alerts: stationAlerts, dismiss: dismissStationAlert } = useStationAlerts(systemId, messages, savedStations);
     const {
         sort,
         excludedValues,
@@ -63,7 +76,12 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         resetAllFilters,
         isColumnActive,
         anyColumnActive,
-    } = useTripFilters(systemId, messages);
+    } = useTripFilters(systemId, messages, savedStopNames, savedStopNamesReady);
+
+    const handleToggleSaveStation = (stopName: string) => {
+        const action = savedStopNames.has(stopName) ? unsave(stopName) : save(stopName);
+        action.catch((error: unknown) => { console.error("Failed to update saved station:", error); });
+    };
 
     // Shown in place of rows when the filters (not a genuinely empty
     // buffer - see the messages.length===0 branch below) exclude every
@@ -269,8 +287,32 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 onToggleValue={toggleFilterValue}
                 onSelectAll={selectAllValues}
                 onClearAll={clearAllValues}
+                savedStopNames={user ? savedStopNames : undefined}
+                atSaveLimit={atSaveLimit}
+                onToggleSaveStation={user ? handleToggleSaveStation : undefined}
             />
         </Box>
+        <Stack spacing={1} sx={{ position: "fixed", bottom: 16, right: 16, zIndex: (theme) => theme.zIndex.snackbar }}>
+            {stationAlerts.map((alert) => (
+                <Snackbar
+                    key={alert.key}
+                    open
+                    autoHideDuration={10000}
+                    onClose={() => dismissStationAlert(alert.key)}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+                    sx={{ position: "static" }}
+                >
+                    <Alert
+                        severity="info"
+                        onClose={() => dismissStationAlert(alert.key)}
+                        sx={{ fontFamily: "var(--font-body)", backgroundColor: "var(--surface-raised)", color: "var(--ink)", border: "1px solid var(--hairline)" }}
+                    >
+                        {alert.tripHeadsign ? `${alert.tripHeadsign} ` : "A train "}
+                        arriving at {alert.stopName} in {alert.etaMinutes <= 0 ? "under a minute" : `${alert.etaMinutes} min`}
+                    </Alert>
+                </Snackbar>
+            ))}
+        </Stack>
         <TripDetailCard
             systemId={systemId}
             tripId={selectedTripId}
