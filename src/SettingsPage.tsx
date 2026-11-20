@@ -139,8 +139,19 @@ export default function SettingsPage() {
         savedStationsApi
             .updateSavedStation(system, stopName, patch)
             .then((updated) => {
+                // PATCH /saved_stations/{system} doesn't echo transit_system
+                // back (only the all-systems GET joins it in) - merging
+                // `updated` as-is would wipe it from this row, which both
+                // misfiles the row under "Unknown system" on the next
+                // render AND corrupts every later toggle for this row: the
+                // onUpdate closure below is built from bySystem's own key,
+                // so a future call would PATCH the literal, nonexistent
+                // system name "Unknown system" instead of this row's real
+                // one - a 404 that silently never flips the switch back.
                 setStations((prev) => prev.map((s) => (
-                    s.transit_system === system && s.stop_name === stopName ? updated : s
+                    s.transit_system === system && s.stop_name === stopName
+                        ? { ...updated, transit_system: system }
+                        : s
                 )));
             })
             .catch((error: unknown) => { console.error("Failed to update saved station:", error); });
