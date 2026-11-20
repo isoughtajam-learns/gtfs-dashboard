@@ -20,3 +20,20 @@ export function ChevronDownIcon() {
         </svg>
     );
 }
+
+// Phase 4 (.claude/plans/development.md): save/unsave a station. Filled
+// when saved, outline otherwise - same filled-vs-outline convention
+// Header.tsx's BellIcon already uses for "something to show" vs. not.
+export function StarIcon({ filled }: { filled: boolean }) {
+    return (
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+                d="M8 1.5 9.8 5.6l4.5.4-3.4 3 1 4.4L8 11.1l-3.9 2.3 1-4.4-3.4-3 4.5-.4Z"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+                fill={filled ? "currentColor" : "none"}
+            />
+        </svg>
+    );
+}

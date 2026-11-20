@@ -4,8 +4,10 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AppBar, Box, IconButton, Menu, MenuItem, Toolbar, Typography } from "@mui/material";
 import SplitFlapTitle from "./SplitFlapTitle.tsx";
 import ServiceAlertsModal from "./ServiceAlertsModal.tsx";
+import AuthDialog from "./AuthDialog.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
+import { useAuth } from "./AuthContext.tsx";
 
 // No @mui/icons-material dependency in this project; three bars is all a hamburger needs.
 function MenuIcon() {
@@ -65,6 +67,9 @@ function BellIcon({ hasAlerts }: { hasAlerts: boolean }) {
 const THEME_STORAGE_KEY = "theme";
 
 // Pages this menu can navigate to. Add entries here as more pages land.
+// Settings is appended conditionally below, only once a user is signed in
+// (Phase 4 - .claude/plans/development.md - SettingsPage itself has
+// nothing to manage for a logged-out visitor).
 const PAGES: { path: string; label: string }[] = [
     { path: "/", label: "Live" },
     { path: "/about", label: "About" },
@@ -81,6 +86,9 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     const menuOpen = Boolean(anchorEl);
     const location = useLocation();
     const navigate = useNavigate();
+    const { user, logout } = useAuth();
+    const [authDialogOpen, setAuthDialogOpen] = useState(false);
+    const pages = user ? [...PAGES, { path: "/settings", label: "Settings" }] : PAGES;
 
     // main.tsx already resolved and set this (from a saved override or
     // prefers-color-scheme) before first paint - read it back as the
@@ -204,6 +212,44 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                 >
                     <BellIcon hasAlerts={hasAlerts} />
                 </IconButton>}
+                {/* Phase 4 (.claude/plans/development.md): the only sign-in
+                    entry point - logged-in state shows the email as a
+                    plain label (not a button) since "Log out" already
+                    lives in the hamburger menu below, alongside the
+                    conditionally-added Settings page link. */}
+                {user ? (
+                    <Box
+                        sx={{
+                            display: { xs: "none", sm: "inline-flex" },
+                            fontFamily: "var(--font-body)",
+                            fontSize: "0.8rem",
+                            color: "var(--ink-secondary)",
+                            maxWidth: 160,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                        }}
+                    >
+                        {user.email}
+                    </Box>
+                ) : (
+                    <Box
+                        component="button"
+                        onClick={() => setAuthDialogOpen(true)}
+                        sx={{
+                            fontFamily: "var(--font-display)",
+                            fontWeight: 600,
+                            fontSize: "0.85rem",
+                            color: "var(--coral)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 0,
+                        }}
+                    >
+                        Sign in
+                    </Box>
+                )}
                 <IconButton
                     onClick={toggleTheme}
                     aria-label={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
@@ -232,7 +278,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     onClose={handleMenuClose}
                     slotProps={{ paper: { sx: menuPaperSx } }}
                 >
-                    {PAGES.map((page) => (
+                    {pages.map((page) => (
                         <MenuItem
                             key={page.path}
                             selected={page.path === location.pathname}
@@ -242,6 +288,14 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                             {page.label}
                         </MenuItem>
                     ))}
+                    {user && (
+                        <MenuItem
+                            onClick={() => { void logout(); handleMenuClose(); }}
+                            sx={menuItemSx}
+                        >
+                            Log out
+                        </MenuItem>
+                    )}
                 </Menu>
             </Toolbar>
             <ServiceAlertsModal
@@ -250,6 +304,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                 open={alertsOpen}
                 onClose={() => setAlertsOpen(false)}
             />
+            <AuthDialog open={authDialogOpen} onClose={() => setAuthDialogOpen(false)} />
         </AppBar>
     );
 }

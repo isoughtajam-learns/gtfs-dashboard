@@ -1,6 +1,6 @@
 import type { MouseEvent } from "react";
-import { Box, Checkbox, IconButton, ListItemText, Menu, MenuItem } from "@mui/material";
-import { FilterIcon } from "./icons.tsx";
+import { Box, Checkbox, IconButton, ListItemText, Menu, MenuItem, Tooltip } from "@mui/material";
+import { FilterIcon, StarIcon } from "./icons.tsx";
 import { COLUMN_LABELS, MAX_FILTER_MENU_ITEMS, isFilterField } from "./useTripFilters.ts";
 import type { FilterField, HeaderMenuState, SortDirection, SortField } from "./useTripFilters.ts";
 
@@ -65,6 +65,12 @@ type FilterHeaderMenuProps = {
     onToggleValue: (field: FilterField, value: string) => void;
     onSelectAll: (field: FilterField, targetValues: string[]) => void;
     onClearAll: (field: FilterField, targetValues: string[]) => void;
+    // Phase 4 (.claude/plans/development.md): save/unsave a station
+    // directly from the Station checklist - only passed (and only
+    // rendered, for the stop_name field) when a user is logged in.
+    savedStopNames?: Set<string>;
+    atSaveLimit?: boolean;
+    onToggleSaveStation?: (stopName: string) => void;
 };
 
 // The Line/Station/Next column header's dropdown: sort options for Next,
@@ -83,6 +89,9 @@ export function FilterHeaderMenu({
     onToggleValue,
     onSelectAll,
     onClearAll,
+    savedStopNames,
+    atSaveLimit,
+    onToggleSaveStation,
 }: FilterHeaderMenuProps) {
     return (
         <Menu
@@ -191,22 +200,55 @@ export function FilterHeaderMenu({
                             <MenuItem key="clear-all" onClick={() => onClearAll(field, matches)} sx={menuItemSx}>
                                 { scoped ? "Clear All Matching" : "Clear All" }
                             </MenuItem>,
-                            ...visible.map((value) => (
-                                <MenuItem
-                                    key={`value-${value}`}
-                                    onClick={() => onToggleValue(field, value)}
-                                    sx={checkboxItemSx}
-                                >
-                                    <Checkbox
-                                        size="small"
-                                        checked={!excludedValues[field].has(value)}
-                                        sx={checkboxSx}
-                                        tabIndex={-1}
-                                        disableRipple
-                                    />
-                                    <ListItemText primary={value} />
-                                </MenuItem>
-                            )),
+                            ...visible.map((value) => {
+                                const isStationField = field === "stop_name";
+                                const isSaved = isStationField && (savedStopNames?.has(value) ?? false);
+                                const saveDisabled = !isSaved && Boolean(atSaveLimit);
+                                return (
+                                    <MenuItem
+                                        key={`value-${value}`}
+                                        onClick={() => onToggleValue(field, value)}
+                                        sx={checkboxItemSx}
+                                    >
+                                        <Checkbox
+                                            size="small"
+                                            checked={!excludedValues[field].has(value)}
+                                            sx={checkboxSx}
+                                            tabIndex={-1}
+                                            disableRipple
+                                        />
+                                        <ListItemText primary={value} />
+                                        {isStationField && onToggleSaveStation && (
+                                            <Tooltip
+                                                title={
+                                                    saveDisabled
+                                                        ? "At most 10 saved stations per system"
+                                                        : isSaved ? "Unsave station" : "Save station"
+                                                }
+                                            >
+                                                <Box
+                                                    component="span"
+                                                    onClick={(e: MouseEvent<HTMLElement>) => {
+                                                        e.stopPropagation();
+                                                        if (saveDisabled) return;
+                                                        onToggleSaveStation(value);
+                                                    }}
+                                                    sx={{
+                                                        display: "inline-flex",
+                                                        alignItems: "center",
+                                                        ml: 1,
+                                                        color: isSaved ? "var(--coral)" : "var(--ink-secondary)",
+                                                        opacity: saveDisabled ? 0.4 : 1,
+                                                        cursor: saveDisabled ? "default" : "pointer",
+                                                    }}
+                                                >
+                                                    <StarIcon filled={isSaved} />
+                                                </Box>
+                                            </Tooltip>
+                                        )}
+                                    </MenuItem>
+                                );
+                            }),
                             ...(hiddenCount > 0
                                 ? [
                                     <Box
