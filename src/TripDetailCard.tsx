@@ -151,23 +151,20 @@ function CloseIcon() {
 function SaveStationStar({
     stopName,
     saved,
-    disabled,
     onToggle,
 }: {
     stopName: string;
     saved: boolean;
-    disabled: boolean;
     onToggle: () => void;
 }) {
     return (
-        <Tooltip title={disabled ? "At most 10 saved stations per system" : saved ? "Unsave station" : "Save station"}>
+        <Tooltip title={saved ? "Unsave station" : "Save station"}>
             <Box
                 component="span"
                 role="button"
                 aria-label={saved ? `Unsave ${stopName}` : `Save ${stopName}`}
                 onClick={(e: MouseEvent<HTMLElement>) => {
                     e.stopPropagation();
-                    if (disabled) return;
                     onToggle();
                 }}
                 sx={{
@@ -175,8 +172,7 @@ function SaveStationStar({
                     alignItems: "center",
                     flexShrink: 0,
                     color: saved ? "var(--coral)" : "var(--ink-secondary)",
-                    opacity: disabled ? 0.4 : 1,
-                    cursor: disabled ? "default" : "pointer",
+                    cursor: "pointer",
                 }}
             >
                 <StarIcon filled={saved} />
@@ -200,7 +196,6 @@ type TripDetailCardProps = {
     // (a logged-in user) is true.
     canSaveStations: boolean;
     savedStopNames: Set<string>;
-    atSaveLimit: boolean;
     onToggleSaveStation: (stopName: string) => void;
 };
 
@@ -214,7 +209,6 @@ export default function TripDetailCard({
     onSwitchSystem,
     canSaveStations,
     savedStopNames,
-    atSaveLimit,
     onToggleSaveStation,
 }: TripDetailCardProps) {
     // Computed once here rather than re-checked at each of this component's
@@ -437,7 +431,6 @@ export default function TripDetailCard({
                                                             <SaveStationStar
                                                                 stopName={stop.stop_name}
                                                                 saved={savedStopNames.has(stop.stop_name)}
-                                                                disabled={!savedStopNames.has(stop.stop_name) && atSaveLimit}
                                                                 onToggle={() => onToggleSaveStation(stop.stop_name!)}
                                                             />
                                                         )}
@@ -481,7 +474,6 @@ export default function TripDetailCard({
                                                 <SaveStationStar
                                                     stopName={stop.stop_name}
                                                     saved={savedStopNames.has(stop.stop_name)}
-                                                    disabled={!savedStopNames.has(stop.stop_name) && atSaveLimit}
                                                     onToggle={() => onToggleSaveStation(stop.stop_name!)}
                                                 />
                                             )}

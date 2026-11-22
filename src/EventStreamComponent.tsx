@@ -53,7 +53,6 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         saved: savedStations,
         savedStopNames,
         ready: savedStopNamesReady,
-        atLimit: atSaveLimit,
         save,
         unsave,
     } = useSavedStations(systemId);
@@ -316,7 +315,6 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             onClose={() => setSelectedTripId(null)}
             canSaveStations={Boolean(user)}
             savedStopNames={savedStopNames}
-            atSaveLimit={atSaveLimit}
             onToggleSaveStation={handleToggleSaveStation}
             onSwitchSystem={(transferSystemId) => {
                 // Only close the card when the switch will actually happen -

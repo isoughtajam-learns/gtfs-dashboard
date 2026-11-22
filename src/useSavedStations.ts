@@ -3,8 +3,6 @@ import { useAuth } from "./AuthContext.tsx";
 import * as savedStationsApi from "./savedStations.ts";
 import type { SavedStation } from "./savedStations.ts";
 
-export const MAX_SAVED_STATIONS_PER_SYSTEM = 10;
-
 export type SavedStationsState = {
     saved: SavedStation[];
     savedStopNames: Set<string>;
@@ -13,7 +11,6 @@ export type SavedStationsState = {
     // resolved at least once - see `loading`'s own comment above for why
     // `loading` alone (starting true) is what makes this accurate.
     ready: boolean;
-    atLimit: boolean;
     save: (stopName: string) => Promise<void>;
     unsave: (stopName: string) => Promise<void>;
     updateAlert: (
@@ -90,7 +87,6 @@ export function useSavedStations(systemId: string): SavedStationsState {
         savedStopNames,
         loading,
         ready: !authLoading && !loading,
-        atLimit: saved.length >= MAX_SAVED_STATIONS_PER_SYSTEM,
         save,
         unsave,
         updateAlert,
