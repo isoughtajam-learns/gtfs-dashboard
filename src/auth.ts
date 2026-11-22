@@ -56,7 +56,15 @@ export async function login(username: string, password: string): Promise<AuthUse
 }
 
 export async function logout(): Promise<void> {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    // fetch() only rejects on a network-level failure, never on a non-2xx
+    // status - without this check a 5xx "succeeds" from this function's
+    // point of view, and AuthContext's logout() would clear local auth
+    // state even though the session cookie was never actually cleared
+    // server-side.
+    if (!res.ok) {
+        throw new AuthError(`Failed to log out: ${res.status}`, res.status);
+    }
 }
 
 // Returns null for "not logged in" (401) rather than throwing - this is

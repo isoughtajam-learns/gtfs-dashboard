@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "./AuthContext.tsx";
 import * as savedStationsApi from "./savedStations.ts";
 import type { SavedStation } from "./savedStations.ts";
@@ -37,6 +37,14 @@ export function useSavedStations(systemId: string): SavedStationsState {
     // seed for a real user who did have saved stations.
     const [loading, setLoading] = useState(true);
 
+    // Lets save/unsave/updateAlert below check, once their request
+    // resolves, whether systemId has since moved on - a plain closure
+    // over systemId only knows what it was AT CALL TIME, not now.
+    const systemIdRef = useRef(systemId);
+    useEffect(() => {
+        systemIdRef.current = systemId;
+    }, [systemId]);
+
     // Cancellation-guarded, same convention as every other fetch effect in
     // this codebase (e.g. useTripFilters.ts's fetchAllLines/fetchAllStops) -
     // without it, switching systemId A -> B while A's fetch is still in
@@ -70,13 +78,21 @@ export function useSavedStations(systemId: string): SavedStationsState {
 
     const save = useCallback(async (stopName: string) => {
         if (!systemId) return;
+        const requestSystemId = systemId;
         const created = await savedStationsApi.saveStation(systemId, stopName);
+        // The fetch effect above already reset `saved` for whatever
+        // system is current by the time this resolves - applying a
+        // stale system's result on top of it would silently mix the two
+        // systems' saved stations together.
+        if (systemIdRef.current !== requestSystemId) return;
         setSaved((prev) => [...prev, created]);
     }, [systemId]);
 
     const unsave = useCallback(async (stopName: string) => {
         if (!systemId) return;
+        const requestSystemId = systemId;
         await savedStationsApi.unsaveStation(systemId, stopName);
+        if (systemIdRef.current !== requestSystemId) return;
         setSaved((prev) => prev.filter((s) => s.stop_name !== stopName));
     }, [systemId]);
 
@@ -85,7 +101,9 @@ export function useSavedStations(systemId: string): SavedStationsState {
         patch: { alert_enabled?: boolean; alert_lead_minutes?: number },
     ) => {
         if (!systemId) return;
+        const requestSystemId = systemId;
         const updated = await savedStationsApi.updateSavedStation(systemId, stopName, patch);
+        if (systemIdRef.current !== requestSystemId) return;
         setSaved((prev) => prev.map((s) => (s.stop_name === stopName ? updated : s)));
     }, [systemId]);
 

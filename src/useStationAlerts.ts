@@ -48,7 +48,13 @@ export function useStationAlerts(
             if (firedRef.current.has(key)) continue;
 
             const etaMinutes = (message.next * 1000 - Date.now()) / 60000;
-            if (etaMinutes > leadMinutes || etaMinutes < 0) continue;
+            // NaN satisfies neither bound below (NaN > x and NaN < x are
+            // both false), so a malformed message.next would otherwise
+            // slip through and render "arriving in NaN min" instead of
+            // being skipped like any other out-of-range value.
+            if (!Number.isFinite(etaMinutes) || etaMinutes > leadMinutes || etaMinutes < 0) {
+                continue;
+            }
 
             firedRef.current.add(key);
             newAlerts.push({
