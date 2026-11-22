@@ -43,12 +43,13 @@ const LEAD_MINUTES_OPTIONS = Array.from(
     (_, index) => LEAD_MINUTES_MIN + index,
 );
 
-function parseLeadMinutes(raw: string): number | null {
-    const value = Math.round(Number(raw));
-    if (!Number.isFinite(value) || value < LEAD_MINUTES_MIN || value > LEAD_MINUTES_MAX) {
-        return null;
-    }
-    return value;
+// Clamps an in-range number, rounds a fractional one - returns null only
+// for text that isn't a number at all (empty, letters, ...), which the
+// caller falls back to reverting rather than guessing at.
+function clampLeadMinutes(raw: string): number | null {
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    return Math.min(LEAD_MINUTES_MAX, Math.max(LEAD_MINUTES_MIN, Math.round(value)));
 }
 
 // sm and up: a plain text field, not a number spinner - a number input's
@@ -78,11 +79,18 @@ function AlertLeadMinutesField({
     }, [value]);
 
     const commit = () => {
-        const parsed = parseLeadMinutes(text);
-        if (parsed !== null && parsed !== value) {
-            onCommit(parsed);
-        } else {
+        const clamped = clampLeadMinutes(text);
+        if (clamped === null) {
+            // Not a number at all - nothing sane to clamp to, so revert.
             setText(String(value));
+            return;
+        }
+        if (clamped !== value) {
+            onCommit(clamped);
+        } else {
+            // Clamped back to the same value (e.g. typed "005", or the old
+            // value re-typed) - still normalize the displayed text.
+            setText(String(clamped));
         }
     };
 
