@@ -14,6 +14,23 @@ function TrashIcon() {
     );
 }
 
+function MinusIcon() {
+    return (
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+    );
+}
+
+function PlusIcon() {
+    return (
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <line x1="6" y1="2" x2="6" y2="10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            <line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+    );
+}
+
 const rowSx = {
     display: "flex",
     alignItems: "center",
@@ -38,10 +55,30 @@ const leadMinutesFieldSx = {
 
 const LEAD_MINUTES_MIN = 1;
 const LEAD_MINUTES_MAX = 60;
-const LEAD_MINUTES_OPTIONS = Array.from(
-    { length: LEAD_MINUTES_MAX - LEAD_MINUTES_MIN + 1 },
-    (_, index) => LEAD_MINUTES_MIN + index,
-);
+
+const stepperButtonSx = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    minWidth: 28,
+    padding: 0,
+    borderRadius: "6px",
+    border: "1px solid var(--hairline)",
+    backgroundColor: "var(--surface)",
+    color: "var(--ink)",
+    cursor: "pointer",
+    "&:disabled": { opacity: 0.4, cursor: "default" },
+    "&:not(:disabled):hover": { backgroundColor: "color-mix(in srgb, var(--coral) 16%, transparent)" },
+};
+const stepperValueSx = {
+    minWidth: 20,
+    textAlign: "center" as const,
+    fontFamily: "var(--font-body)",
+    fontSize: "0.85rem",
+    color: "var(--ink)",
+};
 
 // Clamps an in-range number, rounds a fractional one - returns null only
 // for text that isn't a number at all (empty, letters, ...), which the
@@ -53,12 +90,17 @@ function clampLeadMinutes(raw: string): number | null {
 }
 
 // sm and up: a plain text field, not a number spinner - a number input's
-// up/down arrows are the only reliable way to change it, since every
+// up/down arrows were the only reliable way to change it, since every
 // keystroke was previously validated and clamped immediately, which
 // silently rejected the in-between state of clearing the first digit to
 // retype it. This only validates once, on blur/Enter, so an in-progress
-// edit is never fought mid-keystroke. Below sm, a dropdown over the
-// allowed range instead - no text entry to fight with on a touch keyboard.
+// edit is never fought mid-keystroke; an out-of-range value clamps to
+// 1-60 instead of reverting. Below sm, a +/- stepper instead - tried a
+// dropdown first, but scrolling a 60-item list is worse than a keyboard
+// on a touch screen, and a text field there has the same clunky-keyboard
+// problem this whole component exists to avoid. A single-step tap is the
+// right tradeoff for this range (most values picked are small, 1-15);
+// revisit with a larger step or press-to-accelerate if that stops holding.
 function AlertLeadMinutesField({
     value,
     disabled,
@@ -113,16 +155,28 @@ function AlertLeadMinutesField({
                 }}
                 sx={{ ...leadMinutesFieldSx, display: { xs: "none", sm: "inline-block" } }}
             />
-            <Box
-                component="select"
-                disabled={disabled}
-                value={value}
-                onChange={(e) => onCommit(Number(e.target.value))}
-                sx={{ ...leadMinutesFieldSx, width: 64, display: { xs: "inline-block", sm: "none" } }}
-            >
-                {LEAD_MINUTES_OPTIONS.map((minute) => (
-                    <option key={minute} value={minute}>{minute}</option>
-                ))}
+            <Box sx={{ display: { xs: "inline-flex", sm: "none" }, alignItems: "center", gap: 0.5 }}>
+                <Box
+                    component="button"
+                    type="button"
+                    disabled={disabled || value <= LEAD_MINUTES_MIN}
+                    onClick={() => onCommit(Math.max(LEAD_MINUTES_MIN, value - 1))}
+                    aria-label="Decrease alert lead time"
+                    sx={stepperButtonSx}
+                >
+                    <MinusIcon />
+                </Box>
+                <Box sx={stepperValueSx}>{value}</Box>
+                <Box
+                    component="button"
+                    type="button"
+                    disabled={disabled || value >= LEAD_MINUTES_MAX}
+                    onClick={() => onCommit(Math.min(LEAD_MINUTES_MAX, value + 1))}
+                    aria-label="Increase alert lead time"
+                    sx={stepperButtonSx}
+                >
+                    <PlusIcon />
+                </Box>
             </Box>
         </>
     );
