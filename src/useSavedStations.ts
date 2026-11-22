@@ -37,7 +37,14 @@ export function useSavedStations(systemId: string): SavedStationsState {
     // seed for a real user who did have saved stations.
     const [loading, setLoading] = useState(true);
 
-    const refetch = useCallback(() => {
+    // Cancellation-guarded, same convention as every other fetch effect in
+    // this codebase (e.g. useTripFilters.ts's fetchAllLines/fetchAllStops) -
+    // without it, switching systemId A -> B while A's fetch is still in
+    // flight can have A's response (resolving after B's, e.g. over a
+    // slower connection) land last and overwrite B's correctly-loaded
+    // saved-station list with A's, silently mismatching the star/alert
+    // state against whatever system is actually on screen.
+    useEffect(() => {
         // Wait for auth itself to resolve before deciding anything - while
         // it's still hydrating, `user` is indistinguishable from "really
         // logged out," and resolving `loading` to false here would do the
@@ -49,15 +56,15 @@ export function useSavedStations(systemId: string): SavedStationsState {
             setLoading(false);
             return;
         }
+        let cancelled = false;
         setLoading(true);
         void savedStationsApi
             .fetchSavedStations(systemId)
-            .then(setSaved)
+            .then((fetched) => { if (!cancelled) setSaved(fetched); })
             .catch((error: unknown) => { console.error("Failed to fetch saved stations:", error); })
-            .finally(() => setLoading(false));
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     }, [systemId, user, authLoading]);
-
-    useEffect(() => { refetch(); }, [refetch]);
 
     const savedStopNames = useMemo(() => new Set(saved.map((s) => s.stop_name)), [saved]);
 

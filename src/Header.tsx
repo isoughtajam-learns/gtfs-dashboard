@@ -266,7 +266,18 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                         "Sign in" control elsewhere in the header. */}
                     <MenuItem
                         onClick={() => {
-                            if (user) { void logout(); } else { setAuthDialogOpen(true); }
+                            if (user) {
+                                // Caught, not left to reject unhandled - a
+                                // failed logout (offline, a 5xx) would
+                                // otherwise leave `user` set (the signed-in
+                                // menu never updates) with no error surfaced
+                                // anywhere.
+                                logout().catch((error: unknown) => {
+                                    console.error("Failed to log out:", error);
+                                });
+                            } else {
+                                setAuthDialogOpen(true);
+                            }
                             handleMenuClose();
                         }}
                         sx={menuItemSx}

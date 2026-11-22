@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { Box, Dialog, IconButton, Typography } from "@mui/material";
 import { useAuth } from "./AuthContext.tsx";
@@ -65,6 +65,12 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
+    // Guards a submit's .then/.catch against applying local state after
+    // the dialog's already been closed mid-request (the component itself
+    // never unmounts, just `open` toggles, so without this a late
+    // rejection re-populates `error` with a stale message from an
+    // already-abandoned attempt, visible the next time the dialog opens).
+    const closedRef = useRef(false);
 
     const reset = () => {
         setEmail("");
@@ -75,12 +81,14 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
     };
 
     const handleClose = () => {
+        closedRef.current = true;
         reset();
         onClose();
     };
 
     const handleSubmit = (event: FormEvent) => {
         event.preventDefault();
+        closedRef.current = false;
         setError(null);
         setSubmitting(true);
         // Sign-in uses username, not email - see models.AppUser's own
@@ -89,8 +97,13 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
             ? login(username, password)
             : signup(email, username, password);
         action
-            .then(() => { reset(); onClose(); })
+            .then(() => {
+                if (closedRef.current) return;
+                reset();
+                onClose();
+            })
             .catch((err: unknown) => {
+                if (closedRef.current) return;
                 setSubmitting(false);
                 setError(err instanceof Error ? err.message : "Something went wrong");
             });

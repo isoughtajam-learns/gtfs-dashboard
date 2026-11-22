@@ -252,17 +252,23 @@ export function useTripFilters(
     // savedStopNamesReady (auth resolved) and distinctValues.stop_name to
     // actually have entries before marking the decision as made, so a
     // still-hydrating session can't be mistaken for "definitely has no
-    // saved stations."
+    // saved stations." Gated on allStopNames (the schedule-wide /stops
+    // fetch), not distinctValues.stop_name - the live SSE buffer can add
+    // entries to the latter well before /stops resolves (confirmed: SF-MTA
+    // alone has ~2,200 stops, a much larger/slower fetch than the first
+    // SSE message), which previously let this fire on just a couple of
+    // live-buffer names, mark the decision permanently made, and then
+    // never revisit it once the real, full stop list actually arrived.
     useEffect(() => {
         if (hasAppliedSavedStationsDefault()) return;
-        if (!savedStopNamesReady || distinctValues.stop_name.length === 0) return;
+        if (!savedStopNamesReady || allStopNames.length === 0) return;
         markSavedStationsDefaultApplied();
         if (savedStopNames.size === 0) return;
         setExcludedValues((prev) => ({
             ...prev,
             stop_name: new Set(distinctValues.stop_name.filter((name) => !savedStopNames.has(name))),
         }));
-    }, [distinctValues.stop_name, savedStopNames, savedStopNamesReady]);
+    }, [allStopNames, distinctValues.stop_name, savedStopNames, savedStopNamesReady]);
 
     // clearAllValues below snapshots the target values into excludedValues
     // at click time - fine once allLines/allStopNames have loaded, but if a
