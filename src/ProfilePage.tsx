@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Box, IconButton, Switch, Typography } from "@mui/material";
 import { useAuth } from "./AuthContext.tsx";
 import * as savedStationsApi from "./savedStations.ts";
@@ -35,6 +36,90 @@ const leadMinutesFieldSx = {
     outline: "none",
 };
 
+const LEAD_MINUTES_MIN = 1;
+const LEAD_MINUTES_MAX = 60;
+const LEAD_MINUTES_OPTIONS = Array.from(
+    { length: LEAD_MINUTES_MAX - LEAD_MINUTES_MIN + 1 },
+    (_, index) => LEAD_MINUTES_MIN + index,
+);
+
+function parseLeadMinutes(raw: string): number | null {
+    const value = Math.round(Number(raw));
+    if (!Number.isFinite(value) || value < LEAD_MINUTES_MIN || value > LEAD_MINUTES_MAX) {
+        return null;
+    }
+    return value;
+}
+
+// sm and up: a plain text field, not a number spinner - a number input's
+// up/down arrows are the only reliable way to change it, since every
+// keystroke was previously validated and clamped immediately, which
+// silently rejected the in-between state of clearing the first digit to
+// retype it. This only validates once, on blur/Enter, so an in-progress
+// edit is never fought mid-keystroke. Below sm, a dropdown over the
+// allowed range instead - no text entry to fight with on a touch keyboard.
+function AlertLeadMinutesField({
+    value,
+    disabled,
+    onCommit,
+}: {
+    value: number;
+    disabled: boolean;
+    onCommit: (minutes: number) => void;
+}) {
+    const [text, setText] = useState(String(value));
+
+    // Re-syncs after a successful commit round-trips back through props
+    // (or if another client/tab changed it) - safe to do unconditionally
+    // since this only ever fires from a prop change, never while the
+    // field itself is mid-edit (nothing commits until blur/Enter below).
+    useEffect(() => {
+        setText(String(value));
+    }, [value]);
+
+    const commit = () => {
+        const parsed = parseLeadMinutes(text);
+        if (parsed !== null && parsed !== value) {
+            onCommit(parsed);
+        } else {
+            setText(String(value));
+        }
+    };
+
+    return (
+        <>
+            <Box
+                component="input"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                disabled={disabled}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                    if (e.key === "Enter") {
+                        e.preventDefault();
+                        commit();
+                    }
+                }}
+                sx={{ ...leadMinutesFieldSx, display: { xs: "none", sm: "inline-block" } }}
+            />
+            <Box
+                component="select"
+                disabled={disabled}
+                value={value}
+                onChange={(e) => onCommit(Number(e.target.value))}
+                sx={{ ...leadMinutesFieldSx, width: 64, display: { xs: "inline-block", sm: "none" } }}
+            >
+                {LEAD_MINUTES_OPTIONS.map((minute) => (
+                    <option key={minute} value={minute}>{minute}</option>
+                ))}
+            </Box>
+        </>
+    );
+}
+
 function SavedStationRow({
     station,
     onUpdate,
@@ -58,20 +143,10 @@ function SavedStationRow({
                 <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.8rem", color: "var(--ink-secondary)" }}>
                     Alert
                 </Box>
-                <Box
-                    component="input"
-                    type="number"
-                    min={1}
-                    max={60}
-                    disabled={!station.alert_enabled}
+                <AlertLeadMinutesField
                     value={station.alert_lead_minutes}
-                    onChange={(e) => {
-                        const value = Number(e.target.value);
-                        if (Number.isFinite(value) && value >= 1 && value <= 60) {
-                            onUpdate({ alert_lead_minutes: value });
-                        }
-                    }}
-                    sx={leadMinutesFieldSx}
+                    disabled={!station.alert_enabled}
+                    onCommit={(minutes) => onUpdate({ alert_lead_minutes: minutes })}
                 />
                 <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.8rem", color: "var(--ink-secondary)" }}>
                     min before
