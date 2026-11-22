@@ -420,13 +420,6 @@ export default function TripDetailCard({
                                             >
                                                 <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>
                                                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                                        <Box component="span">{ stop.stop_name ?? stop.stop_id }</Box>
-                                                        <TransferIndicators
-                                                            intraSystemTransfers={stop.intra_system_transfers ?? []}
-                                                            interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
-                                                            onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
-                                                            compactIntra={compactIntra}
-                                                        />
                                                         {canSaveStations && stop.stop_name && (
                                                             <SaveStationStar
                                                                 stopName={stop.stop_name}
@@ -434,6 +427,13 @@ export default function TripDetailCard({
                                                                 onToggle={() => onToggleSaveStation(stop.stop_name!)}
                                                             />
                                                         )}
+                                                        <Box component="span">{ stop.stop_name ?? stop.stop_id }</Box>
+                                                        <TransferIndicators
+                                                            intraSystemTransfers={stop.intra_system_transfers ?? []}
+                                                            interSystemTransferSystems={stop.inter_system_transfer_systems ?? []}
+                                                            onInterClick={(transferSystemId) => onSwitchSystem(transferSystemId)}
+                                                            compactIntra={compactIntra}
+                                                        />
                                                     </Box>
                                                 </TableCell>
                                                 <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>{ formatEpochSeconds(stop.arrival_time) }</TableCell>
@@ -467,9 +467,6 @@ export default function TripDetailCard({
                                         ]}
                                     >
                                         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                                            <Box sx={isNext ? [stopFieldValueSx, blinkSx, { fontSize: "1rem" }] : [stopFieldValueSx, { fontSize: "1rem" }]}>
-                                                { stop.stop_name ?? stop.stop_id }
-                                            </Box>
                                             {canSaveStations && stop.stop_name && (
                                                 <SaveStationStar
                                                     stopName={stop.stop_name}
@@ -477,6 +474,9 @@ export default function TripDetailCard({
                                                     onToggle={() => onToggleSaveStation(stop.stop_name!)}
                                                 />
                                             )}
+                                            <Box sx={isNext ? [stopFieldValueSx, blinkSx, { fontSize: "1rem" }] : [stopFieldValueSx, { fontSize: "1rem" }]}>
+                                                { stop.stop_name ?? stop.stop_id }
+                                            </Box>
                                         </Box>
                                         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mt: 1 }}>
                                             <Box>
