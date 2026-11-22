@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AppBar, Box, IconButton, Menu, MenuItem, Toolbar, Typography } from "@mui/material";
+import { AppBar, Box, Divider, IconButton, Menu, MenuItem, Toolbar, Typography } from "@mui/material";
 import SplitFlapTitle from "./SplitFlapTitle.tsx";
 import ServiceAlertsModal from "./ServiceAlertsModal.tsx";
 import AuthDialog from "./AuthDialog.tsx";
@@ -66,10 +66,10 @@ function BellIcon({ hasAlerts }: { hasAlerts: boolean }) {
 
 const THEME_STORAGE_KEY = "theme";
 
-// Pages this menu can navigate to. Add entries here as more pages land.
-// Profile is appended conditionally below, only once a user is signed in
-// (Phase 4 - .claude/plans/development.md - ProfilePage itself has
-// nothing to manage for a logged-out visitor).
+// Pages this menu can navigate to - every visitor sees these, signed in or
+// not. Add entries here as more non-personalized pages land. Profile (and
+// the Sign in/Log out toggle) render separately below a divider, since
+// they're about the signed-in user specifically, not app-wide navigation.
 const PAGES: { path: string; label: string }[] = [
     { path: "/", label: "Live" },
     { path: "/about", label: "About" },
@@ -88,7 +88,6 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     const navigate = useNavigate();
     const { user, logout } = useAuth();
     const [authDialogOpen, setAuthDialogOpen] = useState(false);
-    const pages = user ? [...PAGES, { path: "/profile", label: "Profile" }] : PAGES;
 
     // main.tsx already resolved and set this (from a saved override or
     // prefers-color-scheme) before first paint - read it back as the
@@ -240,7 +239,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                     onClose={handleMenuClose}
                     slotProps={{ paper: { sx: menuPaperSx } }}
                 >
-                    {pages.map((page) => (
+                    {PAGES.map((page) => (
                         <MenuItem
                             key={page.path}
                             selected={page.path === location.pathname}
@@ -250,6 +249,18 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                             {page.label}
                         </MenuItem>
                     ))}
+                    {/* Separates app-wide navigation above from the
+                        signed-in user's own items below. */}
+                    <Divider sx={{ borderColor: "var(--hairline)", my: 0.5 }} />
+                    {user && (
+                        <MenuItem
+                            selected={location.pathname === "/profile"}
+                            onClick={() => { void navigate("/profile"); handleMenuClose(); }}
+                            sx={menuItemSx}
+                        >
+                            Profile
+                        </MenuItem>
+                    )}
                     {/* The only sign-in entry point now - toggles label/
                         action by auth state rather than showing a separate
                         "Sign in" control elsewhere in the header. */}
