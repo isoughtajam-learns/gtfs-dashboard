@@ -266,7 +266,6 @@ export default function TripDetailCard({
             (stop) => stop.arrival_time == null || stop.arrival_time >= nowSeconds
         );
     }, [detail]);
-    const nextStop = nextStopIndex !== -1 ? detail?.stops[nextStopIndex] : undefined;
 
     // The colloquial "N Judah"/"38R Geary Rapid"/"72 CCC - San Pablo" form
     // (see lineLabel.ts) when it applies; otherwise the raw route_long_name
@@ -320,26 +319,9 @@ export default function TripDetailCard({
                     flexShrink: 0,
                 }}
             >
-                <Box sx={{ minWidth: 0 }}>
-                    <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.5rem", textAlign: "left", minWidth: 0 }}>
-                        { detail?.trip_headsign ?? `Trip ${tripId}` }
-                    </Typography>
-                    {/* The next stop, duplicated from its own row in the
-                        table below - this is the one station someone
-                        opening a trip's detail is most likely here to save,
-                        so it gets its own direct star instead of making
-                        them scroll to find its row. */}
-                    { canSaveStations && nextStop?.stop_name && (
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mt: 0.25, fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
-                            <SaveStationStar
-                                stopName={nextStop.stop_name}
-                                saved={savedStopNames.has(nextStop.stop_name)}
-                                onToggle={() => onToggleSaveStation(nextStop.stop_name!)}
-                            />
-                            <Box component="span">{ nextStop.stop_name }</Box>
-                        </Box>
-                    )}
-                </Box>
+                <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "1.5rem", textAlign: "left", minWidth: 0 }}>
+                    { detail?.trip_headsign ?? `Trip ${tripId}` }
+                </Typography>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flexShrink: 0, maxWidth: "100%" }}>
                     { detail && routeBadgeLabel && (
                         <Tooltip title={routeBadgeLabel}>
