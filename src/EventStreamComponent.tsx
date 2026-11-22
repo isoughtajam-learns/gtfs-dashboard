@@ -287,9 +287,6 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 onToggleValue={toggleFilterValue}
                 onSelectAll={selectAllValues}
                 onClearAll={clearAllValues}
-                savedStopNames={user ? savedStopNames : undefined}
-                atSaveLimit={atSaveLimit}
-                onToggleSaveStation={user ? handleToggleSaveStation : undefined}
             />
         </Box>
         <Stack spacing={1} sx={{ position: "fixed", bottom: 16, right: 16, zIndex: (theme) => theme.zIndex.snackbar }}>
@@ -317,6 +314,10 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
             systemId={systemId}
             tripId={selectedTripId}
             onClose={() => setSelectedTripId(null)}
+            canSaveStations={Boolean(user)}
+            savedStopNames={savedStopNames}
+            atSaveLimit={atSaveLimit}
+            onToggleSaveStation={handleToggleSaveStation}
             onSwitchSystem={(transferSystemId) => {
                 // Only close the card when the switch will actually happen -
                 // App.tsx's handleSystemChange silently no-ops an id that

@@ -5,7 +5,7 @@ import EventStreamComponent from "./EventStreamComponent.tsx";
 import Header from "./Header.tsx";
 import About from "./About.tsx";
 import NotFound from "./NotFound.tsx";
-import SettingsPage from "./SettingsPage.tsx";
+import ProfilePage from "./ProfilePage.tsx";
 import { fetchTransitSystems } from "./transitSystems.ts";
 import type { TransitSystem } from "./transitSystems.ts";
 import {Grid} from "@mui/material";
@@ -99,7 +99,7 @@ function App() {
                 }
               />
               <Route path="/about" element={<About />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Grid>

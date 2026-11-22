@@ -84,11 +84,13 @@ function SavedStationRow({
     );
 }
 
-// Phase 4 (.claude/plans/development.md): every saved station across every
-// transit system in one place, grouped by system - one fetch
-// (GET /saved_stations, no system param) rather than one round-trip per
-// system the user happens to have saved stations in.
-export default function SettingsPage() {
+// Phase 4 (.claude/plans/development.md): the signed-in rider's own page -
+// for now just every saved station across every transit system in one
+// place, grouped by system (one fetch, GET /saved_stations with no system
+// param, rather than one round-trip per system the user happens to have
+// saved stations in) - but named/routed as Profile, not Settings, since
+// this is meant to grow into the rider's general account page over time.
+export default function ProfilePage() {
     const { user } = useAuth();
     const [stations, setStations] = useState<SavedStation[]>([]);
     const [loading, setLoading] = useState(true);
@@ -170,7 +172,7 @@ export default function SettingsPage() {
         return (
             <StatusMessage>
                 <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.9rem", color: "var(--ink-secondary)" }}>
-                    No saved stations yet. Star a station from the live feed to save it here.
+                    No saved stations yet. Open a trip's detail and star one of its stops to save it here.
                 </Box>
             </StatusMessage>
         );

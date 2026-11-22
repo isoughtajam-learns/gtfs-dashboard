@@ -25,8 +25,8 @@ export type SavedStationsState = {
 // Phase 4 (.claude/plans/development.md): one transit system's saved
 // stations for the current user. Empty/no-op while logged out - every
 // mutator below is a thin wrapper that's simply never wired to a control
-// a logged-out viewer can reach (FilterHeaderMenu/SettingsPage only render
-// the save/unsave affordances when useAuth().user is set).
+// a logged-out viewer can reach (TripDetailCard only renders the
+// save/unsave star when useAuth().user is set).
 export function useSavedStations(systemId: string): SavedStationsState {
     const { user, loading: authLoading } = useAuth();
     const [saved, setSaved] = useState<SavedStation[]>([]);
