@@ -84,6 +84,11 @@ const stepperValueSx = {
 // for text that isn't a number at all (empty, letters, ...), which the
 // caller falls back to reverting rather than guessing at.
 function clampLeadMinutes(raw: string): number | null {
+    // Number("") === 0, which IS finite - without this check an emptied
+    // field (selected-all-and-deleted to retype) clamped to 1 instead of
+    // falling into the null/revert branch below, silently committing 1
+    // if the field lost focus before a digit was typed.
+    if (raw.trim() === "") return null;
     const value = Number(raw);
     if (!Number.isFinite(value)) return null;
     return Math.min(LEAD_MINUTES_MAX, Math.max(LEAD_MINUTES_MIN, Math.round(value)));

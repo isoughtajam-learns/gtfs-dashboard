@@ -264,11 +264,26 @@ export function useTripFilters(
         if (!savedStopNamesReady || allStopNames.length === 0) return;
         markSavedStationsDefaultApplied();
         if (savedStopNames.size === 0) return;
+        // A manual exclusion made during the loading window above (the
+        // checklist already works off the live SSE buffer before
+        // allStopNames/distinctValues finish loading for a large system)
+        // must win over this default, not get silently overwritten by
+        // it. Listed as a dependency below purely to satisfy
+        // exhaustive-deps - re-firing before the flag above is set is
+        // harmless (same early returns), and firing after is impossible
+        // (markSavedStationsDefaultApplied() already short-circuits it).
+        if (excludedValues.stop_name.size > 0) return;
         setExcludedValues((prev) => ({
             ...prev,
             stop_name: new Set(distinctValues.stop_name.filter((name) => !savedStopNames.has(name))),
         }));
-    }, [allStopNames, distinctValues.stop_name, savedStopNames, savedStopNamesReady]);
+    }, [
+        allStopNames,
+        distinctValues.stop_name,
+        savedStopNames,
+        savedStopNamesReady,
+        excludedValues.stop_name,
+    ]);
 
     // clearAllValues below snapshots the target values into excludedValues
     // at click time - fine once allLines/allStopNames have loaded, but if a

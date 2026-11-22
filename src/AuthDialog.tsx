@@ -65,12 +65,14 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
     const [password, setPassword] = useState("");
     const [error, setError] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
-    // Guards a submit's .then/.catch against applying local state after
-    // the dialog's already been closed mid-request (the component itself
-    // never unmounts, just `open` toggles, so without this a late
-    // rejection re-populates `error` with a stale message from an
-    // already-abandoned attempt, visible the next time the dialog opens).
-    const closedRef = useRef(false);
+    // Identifies each submit attempt so its .then/.catch can tell, once
+    // the request resolves, whether it's still the CURRENT attempt - not
+    // just whether the dialog is closed. A boolean "closed" flag isn't
+    // enough: close -> reopen -> resubmit resets it to false again, so a
+    // still-pending FIRST request's resolution would be mistaken for the
+    // second attempt's own, clobbering its state (reset()+onClose() or a
+    // stale error) instead of being ignored.
+    const attemptRef = useRef(0);
 
     const reset = () => {
         setEmail("");
@@ -81,14 +83,14 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
     };
 
     const handleClose = () => {
-        closedRef.current = true;
+        attemptRef.current += 1;
         reset();
         onClose();
     };
 
     const handleSubmit = (event: FormEvent) => {
         event.preventDefault();
-        closedRef.current = false;
+        const attemptId = (attemptRef.current += 1);
         setError(null);
         setSubmitting(true);
         // Sign-in uses username, not email - see models.AppUser's own
@@ -98,12 +100,12 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
             : signup(email, username, password);
         action
             .then(() => {
-                if (closedRef.current) return;
+                if (attemptRef.current !== attemptId) return;
                 reset();
                 onClose();
             })
             .catch((err: unknown) => {
-                if (closedRef.current) return;
+                if (attemptRef.current !== attemptId) return;
                 setSubmitting(false);
                 setError(err instanceof Error ? err.message : "Something went wrong");
             });
@@ -165,7 +167,13 @@ export default function AuthDialog({ open, onClose }: AuthDialogProps) {
                     component="input"
                     type="password"
                     required
-                    minLength={8}
+                    // Signup-only - the backend's LoginRequest deliberately
+                    // has no minimum (models.py), so an existing account
+                    // with a shorter password (from before this minimum was
+                    // added) can still log in. Enforcing it here regardless
+                    // of mode would block that login client-side, with no
+                    // change-password flow to ever fix such an account.
+                    minLength={mode === "signup" ? 8 : undefined}
                     autoComplete={mode === "login" ? "current-password" : "new-password"}
                     placeholder="Password"
                     value={password}

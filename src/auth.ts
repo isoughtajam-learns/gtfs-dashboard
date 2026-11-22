@@ -17,14 +17,31 @@ class AuthError extends Error {
     }
 }
 
+// FastAPI's own 409/401 handlers in main.py send detail as a plain
+// string, but a Pydantic validation failure (422 - e.g. this PR's new
+// password-length/username-charset checks in models.py) sends it as an
+// array of {loc, msg, type} objects instead - String(detail) on that
+// shape renders as an unhelpful "[object Object]".
+function extractErrorDetail(body: unknown, fallback: string): string {
+    if (!body || typeof body !== "object" || !("detail" in body)) return fallback;
+    const detail = (body as { detail: unknown }).detail;
+    if (Array.isArray(detail)) {
+        const messages = detail
+            .map((item) =>
+                item && typeof item === "object" && "msg" in item
+                    ? String((item as { msg: unknown }).msg)
+                    : null,
+            )
+            .filter((msg): msg is string => msg !== null);
+        return messages.length > 0 ? messages.join("; ") : fallback;
+    }
+    return String(detail);
+}
+
 async function parseAuthResponse(res: Response): Promise<AuthUser> {
     if (!res.ok) {
         const body: unknown = await res.json().catch(() => null);
-        const detail =
-            body && typeof body === "object" && "detail" in body
-                ? String((body as { detail: unknown }).detail)
-                : `Request failed: ${res.status}`;
-        throw new AuthError(detail, res.status);
+        throw new AuthError(extractErrorDetail(body, `Request failed: ${res.status}`), res.status);
     }
     return (await res.json()) as AuthUser;
 }

@@ -18,15 +18,35 @@ export class SavedStationsError extends Error {
     }
 }
 
+// FastAPI's own 404/409 handlers in main.py send detail as a plain
+// string, but a Pydantic validation failure (422 - e.g. an
+// alert_lead_minutes outside SavedStationUpdate's ge=1/le=60 range)
+// sends it as an array of {loc, msg, type} objects instead -
+// String(detail) on that shape renders as an unhelpful "[object Object]".
+function extractErrorDetail(body: unknown, fallback: string): string {
+    if (!body || typeof body !== "object" || !("detail" in body)) return fallback;
+    const detail = (body as { detail: unknown }).detail;
+    if (Array.isArray(detail)) {
+        const messages = detail
+            .map((item) =>
+                item && typeof item === "object" && "msg" in item
+                    ? String((item as { msg: unknown }).msg)
+                    : null,
+            )
+            .filter((msg): msg is string => msg !== null);
+        return messages.length > 0 ? messages.join("; ") : fallback;
+    }
+    return String(detail);
+}
+
 async function parse<T>(res: Response, emptyOn404 = false): Promise<T> {
     if (!res.ok) {
         if (emptyOn404 && res.status === 404) return [] as unknown as T;
         const body: unknown = await res.json().catch(() => null);
-        const detail =
-            body && typeof body === "object" && "detail" in body
-                ? String((body as { detail: unknown }).detail)
-                : `Request failed: ${res.status}`;
-        throw new SavedStationsError(detail, res.status);
+        throw new SavedStationsError(
+            extractErrorDetail(body, `Request failed: ${res.status}`),
+            res.status,
+        );
     }
     return (await res.json()) as T;
 }
