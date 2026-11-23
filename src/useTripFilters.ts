@@ -77,6 +77,34 @@ function writeStoredFilters(filters: StoredFilters): void {
     }
 }
 
+// Phase 4 (.claude/plans/development.md): a dedicated marker, deliberately
+// NOT derived from FILTERS_STORAGE_KEY's own presence - the persistence
+// effect below writes that key unconditionally on every mount (including
+// the very first one, before a user has touched anything), so by the time
+// any real user has loaded the app even once - which they must, before
+// they can even sign up - FILTERS_STORAGE_KEY already exists. Using its
+// mere existence as "has the user ever customized filters" would make the
+// saved-stations default below never fire for a real signup flow. This
+// key instead tracks only whether the one-time seed decision itself has
+// already been made (seeded or skipped), independent of the general blob.
+const SAVED_DEFAULT_APPLIED_KEY = "irl-transit:savedStationsDefaultApplied";
+function hasAppliedSavedStationsDefault(): boolean {
+    try {
+        return localStorage.getItem(SAVED_DEFAULT_APPLIED_KEY) === "true";
+    } catch {
+        return true; // fail toward "don't seed" if storage is unreadable.
+    }
+}
+function markSavedStationsDefaultApplied(): void {
+    try {
+        localStorage.setItem(SAVED_DEFAULT_APPLIED_KEY, "true");
+    } catch {
+        // Best-effort - a future mount may redundantly try to seed again
+        // (and no-op, since the user will have real excludedValues by
+        // then) rather than crash over this.
+    }
+}
+
 export type HeaderMenuState = { anchorEl: HTMLElement; field: SortField } | null;
 
 export type TripFilters = {
@@ -105,7 +133,17 @@ export type TripFilters = {
 // reloads, and the header menu's own open/search UI state. Separated out of
 // EventStreamComponent so that component only has to render what this
 // returns, not manage the filter/sort state machine itself.
-export function useTripFilters(systemId: string, messages: StreamedUpdate[]): TripFilters {
+export function useTripFilters(
+    systemId: string,
+    messages: StreamedUpdate[],
+    savedStopNames: Set<string> = new Set(),
+    // True once auth has resolved (not mid-hydration) - without this, the
+    // seeding effect below could run while useAuth()/useSavedStations are
+    // still resolving a just-loaded session, see a transiently-empty
+    // savedStopNames, and permanently mark the one-time default as
+    // "applied" before the real saved stations ever had a chance to load.
+    savedStopNamesReady = true,
+): TripFilters {
     const [sort, setSort] = useState<{ field: SortField; direction: SortDirection } | null>(
         () => readStoredFilters()?.sort ?? null
     );
@@ -200,6 +238,52 @@ export function useTripFilters(systemId: string, messages: StreamedUpdate[]): Tr
             ...messages.map((m) => m.stop_name),
         ])).sort(),
     }), [messages, allLines, allStopNames]);
+
+    // Phase 4 (.claude/plans/development.md): default the feed to a
+    // user's saved stations, but ONLY the first time this one-time
+    // decision is ever made for this browser (SAVED_DEFAULT_APPLIED_KEY) -
+    // never overriding a filter choice the user has already made. NOT
+    // gated on FILTERS_STORAGE_KEY's own presence: the persistence effect
+    // below writes that key unconditionally on every mount, including the
+    // very first one, so checking "does it exist yet" would already be
+    // true by the time any real user has loaded the app even once (which
+    // they must, before they can sign up) - making that check permanently
+    // true and this default permanently dead for real users. Waits for
+    // savedStopNamesReady (auth resolved) and distinctValues.stop_name to
+    // actually have entries before marking the decision as made, so a
+    // still-hydrating session can't be mistaken for "definitely has no
+    // saved stations." Gated on allStopNames (the schedule-wide /stops
+    // fetch), not distinctValues.stop_name - the live SSE buffer can add
+    // entries to the latter well before /stops resolves (confirmed: SF-MTA
+    // alone has ~2,200 stops, a much larger/slower fetch than the first
+    // SSE message), which previously let this fire on just a couple of
+    // live-buffer names, mark the decision permanently made, and then
+    // never revisit it once the real, full stop list actually arrived.
+    useEffect(() => {
+        if (hasAppliedSavedStationsDefault()) return;
+        if (!savedStopNamesReady || allStopNames.length === 0) return;
+        markSavedStationsDefaultApplied();
+        if (savedStopNames.size === 0) return;
+        // A manual exclusion made during the loading window above (the
+        // checklist already works off the live SSE buffer before
+        // allStopNames/distinctValues finish loading for a large system)
+        // must win over this default, not get silently overwritten by
+        // it. Listed as a dependency below purely to satisfy
+        // exhaustive-deps - re-firing before the flag above is set is
+        // harmless (same early returns), and firing after is impossible
+        // (markSavedStationsDefaultApplied() already short-circuits it).
+        if (excludedValues.stop_name.size > 0) return;
+        setExcludedValues((prev) => ({
+            ...prev,
+            stop_name: new Set(distinctValues.stop_name.filter((name) => !savedStopNames.has(name))),
+        }));
+    }, [
+        allStopNames,
+        distinctValues.stop_name,
+        savedStopNames,
+        savedStopNamesReady,
+        excludedValues.stop_name,
+    ]);
 
     // clearAllValues below snapshots the target values into excludedValues
     // at click time - fine once allLines/allStopNames have loaded, but if a

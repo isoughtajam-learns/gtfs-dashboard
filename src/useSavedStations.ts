@@ -1,0 +1,119 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "./AuthContext.tsx";
+import * as savedStationsApi from "./savedStations.ts";
+import type { SavedStation } from "./savedStations.ts";
+
+export type SavedStationsState = {
+    saved: SavedStation[];
+    savedStopNames: Set<string>;
+    loading: boolean;
+    // True once BOTH auth and this system's own saved-stations fetch have
+    // resolved at least once - see `loading`'s own comment above for why
+    // `loading` alone (starting true) is what makes this accurate.
+    ready: boolean;
+    save: (stopName: string) => Promise<void>;
+    unsave: (stopName: string) => Promise<void>;
+    updateAlert: (
+        stopName: string,
+        patch: { alert_enabled?: boolean; alert_lead_minutes?: number },
+    ) => Promise<void>;
+};
+
+// Phase 4 (.claude/plans/development.md): one transit system's saved
+// stations for the current user. Empty/no-op while logged out - every
+// mutator below is a thin wrapper that's simply never wired to a control
+// a logged-out viewer can reach (TripDetailCard only renders the
+// save/unsave star when useAuth().user is set).
+export function useSavedStations(systemId: string): SavedStationsState {
+    const { user, loading: authLoading } = useAuth();
+    const [saved, setSaved] = useState<SavedStation[]>([]);
+    // Starts true, not false - `ready` below (!authLoading && !loading)
+    // depends on this only ever reading false once a real resolution has
+    // happened (the no-op branch below included), never merely because no
+    // effect has run yet. Confirmed live: initializing this to false let
+    // the saved-stations default in useTripFilters fire its one-time
+    // decision before this hook's own first fetch had even started,
+    // seeing a transiently-empty `saved` and permanently skipping the
+    // seed for a real user who did have saved stations.
+    const [loading, setLoading] = useState(true);
+
+    // Lets save/unsave/updateAlert below check, once their request
+    // resolves, whether systemId has since moved on - a plain closure
+    // over systemId only knows what it was AT CALL TIME, not now.
+    const systemIdRef = useRef(systemId);
+    useEffect(() => {
+        systemIdRef.current = systemId;
+    }, [systemId]);
+
+    // Cancellation-guarded, same convention as every other fetch effect in
+    // this codebase (e.g. useTripFilters.ts's fetchAllLines/fetchAllStops) -
+    // without it, switching systemId A -> B while A's fetch is still in
+    // flight can have A's response (resolving after B's, e.g. over a
+    // slower connection) land last and overwrite B's correctly-loaded
+    // saved-station list with A's, silently mismatching the star/alert
+    // state against whatever system is actually on screen.
+    useEffect(() => {
+        // Wait for auth itself to resolve before deciding anything - while
+        // it's still hydrating, `user` is indistinguishable from "really
+        // logged out," and resolving `loading` to false here would do the
+        // same premature-ready thing this comment is already guarding
+        // against, one level up.
+        if (authLoading) return;
+        if (!systemId || !user) {
+            setSaved([]);
+            setLoading(false);
+            return;
+        }
+        let cancelled = false;
+        setLoading(true);
+        void savedStationsApi
+            .fetchSavedStations(systemId)
+            .then((fetched) => { if (!cancelled) setSaved(fetched); })
+            .catch((error: unknown) => { console.error("Failed to fetch saved stations:", error); })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [systemId, user, authLoading]);
+
+    const savedStopNames = useMemo(() => new Set(saved.map((s) => s.stop_name)), [saved]);
+
+    const save = useCallback(async (stopName: string) => {
+        if (!systemId) return;
+        const requestSystemId = systemId;
+        const created = await savedStationsApi.saveStation(systemId, stopName);
+        // The fetch effect above already reset `saved` for whatever
+        // system is current by the time this resolves - applying a
+        // stale system's result on top of it would silently mix the two
+        // systems' saved stations together.
+        if (systemIdRef.current !== requestSystemId) return;
+        setSaved((prev) => [...prev, created]);
+    }, [systemId]);
+
+    const unsave = useCallback(async (stopName: string) => {
+        if (!systemId) return;
+        const requestSystemId = systemId;
+        await savedStationsApi.unsaveStation(systemId, stopName);
+        if (systemIdRef.current !== requestSystemId) return;
+        setSaved((prev) => prev.filter((s) => s.stop_name !== stopName));
+    }, [systemId]);
+
+    const updateAlert = useCallback(async (
+        stopName: string,
+        patch: { alert_enabled?: boolean; alert_lead_minutes?: number },
+    ) => {
+        if (!systemId) return;
+        const requestSystemId = systemId;
+        const updated = await savedStationsApi.updateSavedStation(systemId, stopName, patch);
+        if (systemIdRef.current !== requestSystemId) return;
+        setSaved((prev) => prev.map((s) => (s.stop_name === stopName ? updated : s)));
+    }, [systemId]);
+
+    return {
+        saved,
+        savedStopNames,
+        loading,
+        ready: !authLoading && !loading,
+        save,
+        unsave,
+        updateAlert,
+    };
+}

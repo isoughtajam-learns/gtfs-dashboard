@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { AppBar, Box, IconButton, Menu, MenuItem, Toolbar, Typography } from "@mui/material";
+import { AppBar, Box, Divider, IconButton, Menu, MenuItem, Toolbar, Typography } from "@mui/material";
 import SplitFlapTitle from "./SplitFlapTitle.tsx";
 import ServiceAlertsModal from "./ServiceAlertsModal.tsx";
+import AuthDialog from "./AuthDialog.tsx";
 import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import type { TransitSystem } from "./transitSystems.ts";
+import { useAuth } from "./AuthContext.tsx";
 
 // No @mui/icons-material dependency in this project; three bars is all a hamburger needs.
 function MenuIcon() {
@@ -64,7 +66,10 @@ function BellIcon({ hasAlerts }: { hasAlerts: boolean }) {
 
 const THEME_STORAGE_KEY = "theme";
 
-// Pages this menu can navigate to. Add entries here as more pages land.
+// Pages this menu can navigate to - every visitor sees these, signed in or
+// not. Add entries here as more non-personalized pages land. Profile (and
+// the Sign in/Log out toggle) render separately below a divider, since
+// they're about the signed-in user specifically, not app-wide navigation.
 const PAGES: { path: string; label: string }[] = [
     { path: "/", label: "Live" },
     { path: "/about", label: "About" },
@@ -81,6 +86,8 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
     const menuOpen = Boolean(anchorEl);
     const location = useLocation();
     const navigate = useNavigate();
+    const { user, logout } = useAuth();
+    const [authDialogOpen, setAuthDialogOpen] = useState(false);
 
     // main.tsx already resolved and set this (from a saved override or
     // prefers-color-scheme) before first paint - read it back as the
@@ -242,6 +249,41 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                             {page.label}
                         </MenuItem>
                     ))}
+                    {/* Separates app-wide navigation above from the
+                        signed-in user's own items below. */}
+                    <Divider sx={{ borderColor: "var(--hairline)", my: 0.5 }} />
+                    {user && (
+                        <MenuItem
+                            selected={location.pathname === "/profile"}
+                            onClick={() => { void navigate("/profile"); handleMenuClose(); }}
+                            sx={menuItemSx}
+                        >
+                            Profile
+                        </MenuItem>
+                    )}
+                    {/* The only sign-in entry point now - toggles label/
+                        action by auth state rather than showing a separate
+                        "Sign in" control elsewhere in the header. */}
+                    <MenuItem
+                        onClick={() => {
+                            if (user) {
+                                // Caught, not left to reject unhandled - a
+                                // failed logout (offline, a 5xx) would
+                                // otherwise leave `user` set (the signed-in
+                                // menu never updates) with no error surfaced
+                                // anywhere.
+                                logout().catch((error: unknown) => {
+                                    console.error("Failed to log out:", error);
+                                });
+                            } else {
+                                setAuthDialogOpen(true);
+                            }
+                            handleMenuClose();
+                        }}
+                        sx={menuItemSx}
+                    >
+                        {user ? "Log out" : "Sign in"}
+                    </MenuItem>
                 </Menu>
             </Toolbar>
             <ServiceAlertsModal
@@ -250,6 +292,7 @@ export default function Header({ systems, selectedSystemId, onSystemChange }: He
                 open={alertsOpen}
                 onClose={() => setAlertsOpen(false)}
             />
+            <AuthDialog open={authDialogOpen} onClose={() => setAuthDialogOpen(false)} />
         </AppBar>
     );
 }

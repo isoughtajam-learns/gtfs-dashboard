@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { Box, Dialog, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip, Typography } from "@mui/material";
 import { keyframes } from "@emotion/react";
 import { routeLineLabel } from "./lineLabel.ts";
 import TransferIndicators from "./TransferIndicators.tsx";
 import { hasTransfers } from "./transferUtils.ts";
+import { StarIcon } from "./icons.tsx";
 import type { IntraSystemTransfer } from "./TransferIndicators.tsx";
 
 // GTFS route_color / route_text_color are six hex digits with the '#' omitted, so a
@@ -142,6 +144,43 @@ function CloseIcon() {
     );
 }
 
+// Phase 4 (.claude/plans/development.md): save/unsave a stop directly from
+// its row - moved here from the Station filter checklist (see
+// FilterHeaderMenu.tsx's history) since a trip's own stop list is a more
+// direct place to star a station than a filter menu.
+function SaveStationStar({
+    stopName,
+    saved,
+    onToggle,
+}: {
+    stopName: string;
+    saved: boolean;
+    onToggle: () => void;
+}) {
+    return (
+        <Tooltip title={saved ? "Unsave station" : "Save station"}>
+            <Box
+                component="span"
+                role="button"
+                aria-label={saved ? `Unsave ${stopName}` : `Save ${stopName}`}
+                onClick={(e: MouseEvent<HTMLElement>) => {
+                    e.stopPropagation();
+                    onToggle();
+                }}
+                sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    flexShrink: 0,
+                    color: saved ? "var(--coral)" : "var(--ink-secondary)",
+                    cursor: "pointer",
+                }}
+            >
+                <StarIcon filled={saved} />
+            </Box>
+        </Tooltip>
+    );
+}
+
 type TripDetailCardProps = {
     systemId: string;
     tripId: string | null;
@@ -151,12 +190,27 @@ type TripDetailCardProps = {
     // (via onClose, handled by the caller) after triggering it, so what's
     // visible next is the switched feed this card was opened from.
     onSwitchSystem: (systemId: string) => void;
+    // Phase 4 (.claude/plans/development.md): save/unsave a stop directly
+    // from its row here (moved from the Station filter checklist - see
+    // FilterHeaderMenu.tsx's history). Only rendered when canSaveStations
+    // (a logged-in user) is true.
+    canSaveStations: boolean;
+    savedStopNames: Set<string>;
+    onToggleSaveStation: (stopName: string) => void;
 };
 
 // Filling most of the screen (not the whole viewport) is deliberate: the
 // live table stays visible (dimmed, via the Dialog's own backdrop) around
 // the edges, so the streamed feed this card was opened from is still there.
-export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSystem }: TripDetailCardProps) {
+export default function TripDetailCard({
+    systemId,
+    tripId,
+    onClose,
+    onSwitchSystem,
+    canSaveStations,
+    savedStopNames,
+    onToggleSaveStation,
+}: TripDetailCardProps) {
     // Computed once here rather than re-checked at each of this component's
     // own TransferIndicators call sites (see TransferIndicators.tsx's own
     // comment on why BART alone gets compact dots).
@@ -366,6 +420,13 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                             >
                                                 <TableCell sx={isNext ? [stopBodyCellSx, blinkSx] : stopBodyCellSx}>
                                                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                                        {canSaveStations && stop.stop_name && (
+                                                            <SaveStationStar
+                                                                stopName={stop.stop_name}
+                                                                saved={savedStopNames.has(stop.stop_name)}
+                                                                onToggle={() => onToggleSaveStation(stop.stop_name!)}
+                                                            />
+                                                        )}
                                                         <Box component="span">{ stop.stop_name ?? stop.stop_id }</Box>
                                                         <TransferIndicators
                                                             intraSystemTransfers={stop.intra_system_transfers ?? []}
@@ -405,8 +466,17 @@ export default function TripDetailCard({ systemId, tripId, onClose, onSwitchSyst
                                             isNext ? { backgroundColor: "var(--coral-tint)" } : {},
                                         ]}
                                     >
-                                        <Box sx={isNext ? [stopFieldValueSx, blinkSx, { fontSize: "1rem" }] : [stopFieldValueSx, { fontSize: "1rem" }]}>
-                                            { stop.stop_name ?? stop.stop_id }
+                                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                                            {canSaveStations && stop.stop_name && (
+                                                <SaveStationStar
+                                                    stopName={stop.stop_name}
+                                                    saved={savedStopNames.has(stop.stop_name)}
+                                                    onToggle={() => onToggleSaveStation(stop.stop_name!)}
+                                                />
+                                            )}
+                                            <Box sx={isNext ? [stopFieldValueSx, blinkSx, { fontSize: "1rem" }] : [stopFieldValueSx, { fontSize: "1rem" }]}>
+                                                { stop.stop_name ?? stop.stop_id }
+                                            </Box>
                                         </Box>
                                         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, mt: 1 }}>
                                             <Box>

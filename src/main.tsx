@@ -14,6 +14,7 @@ import '@fontsource/inter/700.css'
 import './index.css'
 import './styles/theme.css'
 import App from './App.tsx'
+import { AuthProvider } from './AuthContext.tsx'
 import {ThemeProvider} from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 import theme from './theme.tsx';
@@ -49,7 +50,9 @@ createRoot(document.getElementById('root')!).render(
       <ThemeProvider theme={theme}>
           <CssBaseline />
           <BrowserRouter>
-              <App />
+              <AuthProvider>
+                  <App />
+              </AuthProvider>
           </BrowserRouter>
       </ThemeProvider>
   </StrictMode>
