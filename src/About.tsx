@@ -39,7 +39,7 @@ export default function About() {
             <Box sx={sectionSx}>
                 <Typography component="h2" sx={titleSx}>About</Typography>
                 <Typography component="p" sx={bodySx}>
-                    IRL Transit is a live arrivals and departures board for real-world transit systems. It streams GTFS
+                    IRL Transit is a live transit app focused on the Bay Area. It streams GTFS
                     Realtime trip updates over Server-Sent Events, so headsigns, stations, statuses, and
                     arrival times update the moment a vehicle reports in &mdash; no polling, no refresh
                     button. Pick a system from the header to switch feeds.
@@ -77,29 +77,31 @@ export default function About() {
                 </Typography>
                 <br/>
                 <Typography component="p" sx={bodySx}>
+                    Icons created by Magnific @ Flaticon:
+                    <br />
                     <Box component="a" href="https://www.flaticon.com/free-icons/shelter" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Shelter icons
-                    </Box>  created by Magnific - Flaticon
+                    </Box>
                     <br />
                     <Box component="a" href="https://www.flaticon.com/free-icons/urban" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Urban icons
-                    </Box> created by Magnific - Flaticon
+                    </Box>
                     <br />
                     <Box component="a" href="https://www.flaticon.com/free-icons/town" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Town icons
-                    </Box> created by Magnific - Flaticon
+                    </Box>
                     <br />
                     <Box component="a" href="https://www.flaticon.com/free-icons/tree" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Tree icons
-                    </Box> created by Magnific - Flaticon
+                    </Box>
                     <br />
                     <Box component="a" href="https://www.flaticon.com/free-icons/company" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Company icons
-                    </Box> created by Magnific - Flaticon
+                    </Box>
                     <br />
                     <Box component="a" href="https://www.flaticon.com/free-icons/office" target="_blank" rel="noopener noreferrer" sx={linkSx}>
                         Office icons
-                    </Box> created by Magnific - Flaticon
+                    </Box>
                 </Typography>
             </Box>
         </Box>
