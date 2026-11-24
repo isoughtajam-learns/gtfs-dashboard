@@ -1,9 +1,13 @@
 import { useEffect, useState } from "react";
 import type { KeyboardEvent } from "react";
-import { Box, IconButton, Switch, Typography } from "@mui/material";
+import { Box, IconButton, MenuItem, Select, Switch, Typography } from "@mui/material";
 import { useAuth } from "./AuthContext.tsx";
 import * as savedStationsApi from "./savedStations.ts";
 import type { SavedStation } from "./savedStations.ts";
+import { fetchTransitSystems } from "./transitSystems.ts";
+import type { TransitSystem } from "./transitSystems.ts";
+import { fetchAllStops } from "./filterOptions.ts";
+import TransitSystemSelect from "./TransitSystemSelect.tsx";
 import { StatusMessage } from "./StatusMessage.tsx";
 
 function TrashIcon() {
@@ -187,6 +191,174 @@ function AlertLeadMinutesField({
     );
 }
 
+const createRowSx = {
+    ...rowSx,
+    borderBottom: "none",
+    pb: 2,
+};
+// Same recipe as TransitSystemSelect.tsx's own menuPaperSx/menuItemSx -
+// each caller in this codebase (Header.tsx, FilterHeaderMenu.tsx) keeps its
+// own local copy rather than sharing one, so this follows suit.
+const stationMenuPaperSx = {
+    backgroundColor: "var(--surface-raised)",
+    border: "1px solid var(--hairline)",
+    borderRadius: "var(--radius)",
+    color: "var(--ink)",
+    fontFamily: "var(--font-body)",
+};
+const stationMenuItemSx = {
+    fontFamily: "var(--font-body)",
+    "&:hover": { backgroundColor: "color-mix(in srgb, var(--coral) 16%, transparent)" },
+    "&.Mui-selected": {
+        backgroundColor: "color-mix(in srgb, var(--coral) 22%, transparent)",
+        "&:hover": { backgroundColor: "color-mix(in srgb, var(--coral) 28%, transparent)" },
+    },
+};
+const stationSelectSx = {
+    fontFamily: "var(--font-body)",
+    fontSize: "0.9rem",
+    color: "var(--ink)",
+    backgroundColor: "var(--surface)",
+    border: "1px solid var(--hairline)",
+    borderRadius: "8px",
+    minWidth: 180,
+    "& .MuiSelect-select": {
+        py: "7px !important",
+        pl: "10px !important",
+        pr: "28px !important",
+    },
+    "&.Mui-disabled": { opacity: 0.6 },
+};
+const createAlertButtonSx = {
+    fontFamily: "var(--font-display)",
+    fontWeight: 600,
+    fontSize: "0.85rem",
+    padding: "7px 16px",
+    borderRadius: "8px",
+    border: "none",
+    backgroundColor: "var(--coral)",
+    color: "#fff",
+    cursor: "pointer",
+    "&:disabled": { opacity: 0.5, cursor: "default" },
+};
+
+// Mirrors the "existing alerts" block's own styling (same container, same
+// AlertLeadMinutesField component/clamp range) so a new alert looks like it
+// belongs next to the ones it's about to join.
+function CreateAlertBlock({
+    systems,
+    existingStations,
+    onCreate,
+}: {
+    systems: TransitSystem[];
+    existingStations: SavedStation[];
+    onCreate: (systemId: string, stopName: string, leadMinutes: number) => Promise<void>;
+}) {
+    const [systemId, setSystemId] = useState("");
+    const [stopOptions, setStopOptions] = useState<string[]>([]);
+    const [stopsLoading, setStopsLoading] = useState(false);
+    const [stopName, setStopName] = useState("");
+    const [leadMinutes, setLeadMinutes] = useState(5);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Same clear-then-refetch-on-system-change convention as
+    // useTripFilters.ts's fetchAllStops effect, guarded against a stale
+    // system's response landing after a newer selection.
+    useEffect(() => {
+        setStopName("");
+        if (!systemId) { setStopOptions([]); return; }
+        let cancelled = false;
+        setStopsLoading(true);
+        void fetchAllStops(systemId)
+            .then((names) => { if (!cancelled) setStopOptions(names); })
+            .catch((fetchError: unknown) => {
+                console.error("Failed to fetch stops:", fetchError);
+                if (!cancelled) setStopOptions([]);
+            })
+            .finally(() => { if (!cancelled) setStopsLoading(false); });
+        return () => { cancelled = true; };
+    }, [systemId]);
+
+    // Hides stations already saved for this system instead of letting the
+    // user pick one and hit a 409 from the backend's own uniqueness check.
+    const alreadySaved = new Set(
+        existingStations.filter((s) => s.transit_system === systemId).map((s) => s.stop_name),
+    );
+    const availableStopOptions = stopOptions.filter((name) => !alreadySaved.has(name));
+
+    const canCreate = systemId !== "" && stopName !== "" && !submitting;
+
+    const handleCreate = () => {
+        if (!canCreate) return;
+        setSubmitting(true);
+        setError(null);
+        onCreate(systemId, stopName, leadMinutes)
+            .then(() => {
+                setStopName("");
+                setLeadMinutes(5);
+            })
+            .catch((createError: unknown) => {
+                setError(
+                    createError instanceof savedStationsApi.SavedStationsError
+                        ? createError.message
+                        : "Failed to create alert.",
+                );
+            })
+            .finally(() => setSubmitting(false));
+    };
+
+    return (
+        <Box sx={{ maxWidth: 720, mx: "auto", mt: 2, backgroundColor: "var(--surface)", border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
+            <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "1rem", color: "var(--ink)", px: 2, pt: 2, pb: 1 }}>
+                Create new alert
+            </Typography>
+            <Box sx={createRowSx}>
+                <TransitSystemSelect
+                    systems={systems}
+                    selectedSystemId={systemId}
+                    onSystemChange={setSystemId}
+                />
+                <Select
+                    value={stopName}
+                    onChange={(e) => setStopName(e.target.value)}
+                    size="small"
+                    variant="standard"
+                    disableUnderline
+                    displayEmpty
+                    disabled={!systemId || stopsLoading}
+                    inputProps={{ "aria-label": "Station" }}
+                    MenuProps={{ slotProps: { paper: { sx: stationMenuPaperSx } } }}
+                    sx={stationSelectSx}
+                >
+                    <MenuItem value="" disabled sx={stationMenuItemSx}>
+                        {!systemId ? "Select a transit system first" : stopsLoading ? "Loading…" : "Select a station"}
+                    </MenuItem>
+                    {availableStopOptions.map((name) => (
+                        <MenuItem key={name} value={name} sx={stationMenuItemSx}>
+                            {name}
+                        </MenuItem>
+                    ))}
+                </Select>
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <AlertLeadMinutesField value={leadMinutes} disabled={false} onCommit={setLeadMinutes} />
+                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.8rem", color: "var(--ink-secondary)" }}>
+                        min before
+                    </Box>
+                </Box>
+                <Box component="button" type="button" onClick={handleCreate} disabled={!canCreate} sx={createAlertButtonSx}>
+                    {submitting ? "Creating…" : "Create"}
+                </Box>
+            </Box>
+            {error && (
+                <Typography sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--coral-ink)", px: 2, pb: 2 }}>
+                    {error}
+                </Typography>
+            )}
+        </Box>
+    );
+}
+
 function SavedStationRow({
     station,
     onUpdate,
@@ -236,6 +408,7 @@ export default function ProfilePage() {
     const { user } = useAuth();
     const [stations, setStations] = useState<SavedStation[]>([]);
     const [loading, setLoading] = useState(true);
+    const [systems, setSystems] = useState<TransitSystem[]>([]);
 
     useEffect(() => {
         if (!user) { setLoading(false); return; }
@@ -246,6 +419,15 @@ export default function ProfilePage() {
             .then((fetched) => { if (!cancelled) setStations(fetched); })
             .catch((error: unknown) => { console.error("Failed to fetch saved stations:", error); })
             .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [user]);
+
+    useEffect(() => {
+        if (!user) return;
+        let cancelled = false;
+        void fetchTransitSystems()
+            .then((fetched) => { if (!cancelled) setSystems(fetched); })
+            .catch((error: unknown) => { console.error("Failed to fetch transit systems:", error); });
         return () => { cancelled = true; };
     }, [user]);
 
@@ -310,33 +492,46 @@ export default function ProfilePage() {
             .catch((error: unknown) => { console.error("Failed to remove saved station:", error); });
     };
 
-    if (stations.length === 0) {
-        return (
-            <StatusMessage>
-                <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.9rem", color: "var(--ink-secondary)" }}>
-                    No saved stations yet. Open a trip's detail and star one of its stops to save it here.
-                </Box>
-            </StatusMessage>
-        );
-    }
+    const handleCreate = (systemId: string, stopName: string, leadMinutes: number) => (
+        savedStationsApi
+            .saveStation(systemId, stopName, true, leadMinutes)
+            .then((created) => {
+                // POST /saved_stations/{system} doesn't echo transit_system
+                // back either (see handleUpdate's own comment above for why
+                // that matters) - stamped on here so the new row files under
+                // the right system group instead of "Unknown system".
+                setStations((prev) => [...prev, { ...created, transit_system: systemId }]);
+            })
+    );
 
     return (
-        <Box sx={{ maxWidth: 720, mx: "auto", mt: 2, backgroundColor: "var(--surface)", border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
-            {Array.from(bySystem.entries()).map(([system, systemStations]) => (
-                <Box key={system}>
-                    <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "1rem", color: "var(--ink)", px: 2, pt: 2, pb: 1 }}>
-                        {system}
-                    </Typography>
-                    {systemStations.map((station) => (
-                        <SavedStationRow
-                            key={station.stop_name}
-                            station={station}
-                            onUpdate={(patch) => handleUpdate(system, station.stop_name, patch)}
-                            onRemove={() => handleRemove(system, station.stop_name)}
-                        />
+        <>
+            <CreateAlertBlock systems={systems} existingStations={stations} onCreate={handleCreate} />
+            {stations.length === 0 ? (
+                <StatusMessage>
+                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.9rem", color: "var(--ink-secondary)" }}>
+                        No saved stations yet. Open a trip's detail and star one of its stops, or create one above.
+                    </Box>
+                </StatusMessage>
+            ) : (
+                <Box sx={{ maxWidth: 720, mx: "auto", mt: 2, backgroundColor: "var(--surface)", border: "1px solid var(--hairline)", borderRadius: "var(--radius)" }}>
+                    {Array.from(bySystem.entries()).map(([system, systemStations]) => (
+                        <Box key={system}>
+                            <Typography sx={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: "1rem", color: "var(--ink)", px: 2, pt: 2, pb: 1 }}>
+                                {system}
+                            </Typography>
+                            {systemStations.map((station) => (
+                                <SavedStationRow
+                                    key={station.stop_name}
+                                    station={station}
+                                    onUpdate={(patch) => handleUpdate(system, station.stop_name, patch)}
+                                    onRemove={() => handleRemove(system, station.stop_name)}
+                                />
+                            ))}
+                        </Box>
                     ))}
                 </Box>
-            ))}
-        </Box>
+            )}
+        </>
     );
 }
