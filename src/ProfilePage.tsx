@@ -205,6 +205,14 @@ const stationMenuPaperSx = {
     borderRadius: "var(--radius)",
     color: "var(--ink)",
     fontFamily: "var(--font-body)",
+    // Without a cap, a long unfiltered station list overflows the
+    // viewport and MUI's Popover shifts the menu up to fit it (see
+    // Popover.js's marginThreshold/heightThreshold clamp), while a short
+    // filtered list doesn't overflow and stays anchored right below the
+    // field - the menu visibly jumps between the two. Capping height (same
+    // value as FilterHeaderMenu.tsx's own menuPaperSx) keeps the list
+    // scrolling internally instead, so the anchor point never needs to move.
+    maxHeight: 360,
 };
 const stationMenuItemSx = {
     fontFamily: "var(--font-body)",
@@ -241,6 +249,46 @@ const createAlertButtonSx = {
     cursor: "pointer",
     "&:disabled": { opacity: 0.5, cursor: "default" },
 };
+// Same recipe as FilterHeaderMenu.tsx's own search box - a raw <input>
+// injected as the menu's first child rather than a MenuItem, since it's
+// text entry, not a selectable option.
+const stationSearchBoxSx = {
+    display: "flex",
+    alignItems: "center",
+    gap: 0.5,
+    px: 1.5,
+    py: 0.75,
+    listStyle: "none",
+};
+const stationSearchInputSx = {
+    flex: "1 1 auto",
+    minWidth: 0,
+    boxSizing: "border-box",
+    fontFamily: "var(--font-body)",
+    fontSize: "0.85rem",
+    padding: "6px 8px",
+    borderRadius: "6px",
+    border: "1px solid var(--hairline)",
+    backgroundColor: "var(--surface)",
+    color: "var(--ink)",
+    outline: "none",
+};
+const stationSearchClearButtonSx = {
+    flexShrink: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 24,
+    height: 24,
+    fontSize: "0.9rem",
+    lineHeight: 1,
+    color: "var(--ink-secondary)",
+    backgroundColor: "transparent",
+    border: "none",
+    borderRadius: "50%",
+    cursor: "pointer",
+    "&:hover": { color: "var(--coral)" },
+};
 
 // Mirrors the "existing alerts" block's own styling (same container, same
 // AlertLeadMinutesField component/clamp range) so a new alert looks like it
@@ -258,6 +306,7 @@ function CreateAlertBlock({
     const [stopOptions, setStopOptions] = useState<string[]>([]);
     const [stopsLoading, setStopsLoading] = useState(false);
     const [stopName, setStopName] = useState("");
+    const [stationSearch, setStationSearch] = useState("");
     const [leadMinutes, setLeadMinutes] = useState(5);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -282,6 +331,7 @@ function CreateAlertBlock({
     // system's response landing after a newer selection.
     useEffect(() => {
         setStopName("");
+        setStationSearch("");
         // A create error names a specific station ("already saved") -
         // leaving it up once the user moves to a different system/station
         // would wrongly read as still applying to the new selection.
@@ -305,6 +355,9 @@ function CreateAlertBlock({
         existingStations.filter((s) => s.transit_system === systemId).map((s) => s.stop_name),
     );
     const availableStopOptions = stopOptions.filter((name) => !alreadySaved.has(name));
+    const filteredStopOptions = stationSearch
+        ? availableStopOptions.filter((name) => name.toLowerCase().includes(stationSearch.toLowerCase()))
+        : availableStopOptions;
 
     const canCreate = systemId !== "" && stopName !== "" && !submitting;
 
@@ -345,7 +398,7 @@ function CreateAlertBlock({
                 />
                 <Select
                     value={stopName}
-                    onChange={(e) => { setStopName(e.target.value); setError(null); }}
+                    onChange={(e) => { setStopName(e.target.value); setStationSearch(""); setError(null); }}
                     size="small"
                     variant="standard"
                     disableUnderline
@@ -355,10 +408,48 @@ function CreateAlertBlock({
                     MenuProps={{ slotProps: { paper: { sx: stationMenuPaperSx } } }}
                     sx={stationSelectSx}
                 >
+                    {systemId && !stopsLoading && (
+                        // Plain <li> rather than a MenuItem - text entry, not
+                        // a selectable option. Same convention (and stopped-
+                        // propagation guard so typing doesn't trigger MenuList's
+                        // own letter-key typeahead) as FilterHeaderMenu.tsx's
+                        // station search box in the live feed.
+                        <Box
+                            component="li"
+                            onKeyDown={(e) => { if (e.key !== "Escape") e.stopPropagation(); }}
+                            sx={stationSearchBoxSx}
+                        >
+                            <Box
+                                component="input"
+                                autoFocus
+                                value={stationSearch}
+                                onChange={(e) => setStationSearch(e.target.value)}
+                                placeholder="Search stations…"
+                                sx={stationSearchInputSx}
+                            />
+                            {stationSearch && (
+                                <Box
+                                    component="button"
+                                    type="button"
+                                    onClick={() => setStationSearch("")}
+                                    aria-label="Clear station search"
+                                    sx={stationSearchClearButtonSx}
+                                >
+                                    &times;
+                                </Box>
+                            )}
+                        </Box>
+                    )}
                     <MenuItem value="" disabled sx={stationMenuItemSx}>
-                        {!systemId ? "Select a transit system first" : stopsLoading ? "Loading…" : "Select a station"}
+                        {!systemId
+                            ? "Select a transit system first"
+                            : stopsLoading
+                              ? "Loading…"
+                              : filteredStopOptions.length === 0 && stationSearch
+                                ? `No stations match "${stationSearch}"`
+                                : "Select a station"}
                     </MenuItem>
-                    {availableStopOptions.map((name) => (
+                    {filteredStopOptions.map((name) => (
                         <MenuItem key={name} value={name} sx={stationMenuItemSx}>
                             {name}
                         </MenuItem>
