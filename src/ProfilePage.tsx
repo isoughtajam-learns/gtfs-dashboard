@@ -267,6 +267,10 @@ function CreateAlertBlock({
     // system's response landing after a newer selection.
     useEffect(() => {
         setStopName("");
+        // A create error names a specific station ("already saved") -
+        // leaving it up once the user moves to a different system/station
+        // would wrongly read as still applying to the new selection.
+        setError(null);
         if (!systemId) { setStopOptions([]); return; }
         let cancelled = false;
         setStopsLoading(true);
@@ -321,7 +325,7 @@ function CreateAlertBlock({
                 />
                 <Select
                     value={stopName}
-                    onChange={(e) => setStopName(e.target.value)}
+                    onChange={(e) => { setStopName(e.target.value); setError(null); }}
                     size="small"
                     variant="standard"
                     disableUnderline
