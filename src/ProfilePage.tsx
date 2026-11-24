@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Box, IconButton, MenuItem, Select, Switch, Typography } from "@mui/material";
 import { useAuth } from "./AuthContext.tsx";
@@ -262,6 +262,21 @@ function CreateAlertBlock({
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Lets handleCreate's resolution below check, once the request
+    // settles, whether this exact (system, station) is still what's
+    // selected - same requestSystemId convention as useSavedStations.ts's
+    // save/unsave/updateAlert. Without it, a slow create for an earlier
+    // selection that resolves after the user has already moved on to a
+    // different station clobbers that new, unsubmitted selection: wiping
+    // it back to blank on a stale success, or redisplaying a stale error
+    // that no longer applies to what's on screen.
+    const systemIdRef = useRef(systemId);
+    const stopNameRef = useRef(stopName);
+    useEffect(() => {
+        systemIdRef.current = systemId;
+        stopNameRef.current = stopName;
+    }, [systemId, stopName]);
+
     // Same clear-then-refetch-on-system-change convention as
     // useTripFilters.ts's fetchAllStops effect, guarded against a stale
     // system's response landing after a newer selection.
@@ -295,14 +310,18 @@ function CreateAlertBlock({
 
     const handleCreate = () => {
         if (!canCreate) return;
+        const requestSystemId = systemId;
+        const requestStopName = stopName;
         setSubmitting(true);
         setError(null);
-        onCreate(systemId, stopName, leadMinutes)
+        onCreate(requestSystemId, requestStopName, leadMinutes)
             .then(() => {
+                if (systemIdRef.current !== requestSystemId || stopNameRef.current !== requestStopName) return;
                 setStopName("");
                 setLeadMinutes(5);
             })
             .catch((createError: unknown) => {
+                if (systemIdRef.current !== requestSystemId || stopNameRef.current !== requestStopName) return;
                 setError(
                     createError instanceof savedStationsApi.SavedStationsError
                         ? createError.message
