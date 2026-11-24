@@ -343,7 +343,10 @@ function CreateAlertBlock({
             .then((names) => { if (!cancelled) setStopOptions(names); })
             .catch((fetchError: unknown) => {
                 console.error("Failed to fetch stops:", fetchError);
-                if (!cancelled) setStopOptions([]);
+                if (!cancelled) {
+                    setStopOptions([]);
+                    setError("Failed to load stations for this system.");
+                }
             })
             .finally(() => { if (!cancelled) setStopsLoading(false); });
         return () => { cancelled = true; };
@@ -456,7 +459,7 @@ function CreateAlertBlock({
                     ))}
                 </Select>
                 <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                    <AlertLeadMinutesField value={leadMinutes} disabled={false} onCommit={setLeadMinutes} />
+                    <AlertLeadMinutesField value={leadMinutes} disabled={submitting} onCommit={setLeadMinutes} />
                     <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.8rem", color: "var(--ink-secondary)" }}>
                         min before
                     </Box>
