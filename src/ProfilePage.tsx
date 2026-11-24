@@ -340,7 +340,10 @@ function CreateAlertBlock({
         let cancelled = false;
         setStopsLoading(true);
         void fetchAllStops(systemId)
-            .then((names) => { if (!cancelled) setStopOptions(names); })
+            // Same dedup convention as useTripFilters.ts's own distinctValues
+            // for this same endpoint's data - GTFS multi-platform stations
+            // can report the same display name more than once.
+            .then((names) => { if (!cancelled) setStopOptions(Array.from(new Set(names))); })
             .catch((fetchError: unknown) => {
                 console.error("Failed to fetch stops:", fetchError);
                 if (!cancelled) {
