@@ -380,6 +380,12 @@ function CreateAlertBlock({
                 setLeadMinutes(5);
             })
             .catch((createError: unknown) => {
+                // Always log, even once stale - unlike the success branch's
+                // reset above, a failure has no later success to re-surface
+                // it, so a stale guard here would make it vanish without a
+                // trace anywhere (handleUpdate/handleRemove below always
+                // console.error on failure for the same reason).
+                console.error("Failed to create alert:", createError);
                 if (systemIdRef.current !== requestSystemId || stopNameRef.current !== requestStopName) return;
                 setError(
                     createError instanceof savedStationsApi.SavedStationsError
@@ -404,7 +410,8 @@ function CreateAlertBlock({
                 />
                 <Select
                     value={stopName}
-                    onChange={(e) => { setStopName(e.target.value); setStationSearch(""); setError(null); }}
+                    onChange={(e) => { setStopName(e.target.value); setError(null); }}
+                    onClose={() => setStationSearch("")}
                     size="small"
                     variant="standard"
                     disableUnderline
