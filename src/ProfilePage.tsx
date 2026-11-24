@@ -341,6 +341,7 @@ function CreateAlertBlock({
                     systems={systems}
                     selectedSystemId={systemId}
                     onSystemChange={setSystemId}
+                    placeholder="Select a transit system"
                 />
                 <Select
                     value={stopName}
