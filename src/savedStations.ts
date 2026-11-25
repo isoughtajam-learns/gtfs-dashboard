@@ -3,6 +3,8 @@
 // gtfs-realtime - keyed by stop_name, not stop_id (see that model's own
 // docstring for why).
 
+import { HttpError, extractErrorDetail } from "./httpError.ts";
+
 export type SavedStation = {
     stop_name: string;
     alert_enabled: boolean;
@@ -10,34 +12,7 @@ export type SavedStation = {
     transit_system?: string | null;
 };
 
-export class SavedStationsError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
-    }
-}
-
-// FastAPI's own 404/409 handlers in main.py send detail as a plain
-// string, but a Pydantic validation failure (422 - e.g. an
-// alert_lead_minutes outside SavedStationUpdate's ge=1/le=60 range)
-// sends it as an array of {loc, msg, type} objects instead -
-// String(detail) on that shape renders as an unhelpful "[object Object]".
-function extractErrorDetail(body: unknown, fallback: string): string {
-    if (!body || typeof body !== "object" || !("detail" in body)) return fallback;
-    const detail = (body as { detail: unknown }).detail;
-    if (Array.isArray(detail)) {
-        const messages = detail
-            .map((item) =>
-                item && typeof item === "object" && "msg" in item
-                    ? String((item as { msg: unknown }).msg)
-                    : null,
-            )
-            .filter((msg): msg is string => msg !== null);
-        return messages.length > 0 ? messages.join("; ") : fallback;
-    }
-    return String(detail);
-}
+export class SavedStationsError extends HttpError {}
 
 async function parse<T>(res: Response, emptyOn404 = false): Promise<T> {
     if (!res.ok) {
@@ -56,7 +31,12 @@ export async function fetchSavedStations(systemId: string): Promise<SavedStation
         credentials: "include",
     });
     if (res.status === 401) return [];
-    return parse<SavedStation[]>(res);
+    // The backend 404s this path for a transit_system it doesn't
+    // recognize (e.g. one renamed/removed server-side since this client
+    // last loaded its systems list) - resolving to [] rather than
+    // throwing lets useSavedStations's caller correctly clear `saved` for
+    // that system instead of silently keeping whatever it last held.
+    return parse<SavedStation[]>(res, true);
 }
 
 export async function fetchAllSavedStations(): Promise<SavedStation[]> {

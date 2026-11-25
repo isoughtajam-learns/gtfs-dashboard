@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Alert, Box, CircularProgress, Snackbar, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import TripDetailCard from "./TripDetailCard.tsx";
@@ -77,9 +77,19 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
         anyColumnActive,
     } = useTripFilters(systemId, messages, savedStopNames, savedStopNamesReady);
 
+    // Dedupes a stopName already in flight - without this, a rapid
+    // double-click before the first save/unsave resolves re-fires the
+    // same request. The backend's unique constraint already prevents an
+    // actual duplicate row, but the duplicate request itself would
+    // otherwise just vanish into the .catch below with no signal at all.
+    const pendingSaveTogglesRef = useRef<Set<string>>(new Set());
     const handleToggleSaveStation = (stopName: string) => {
+        if (pendingSaveTogglesRef.current.has(stopName)) return;
+        pendingSaveTogglesRef.current.add(stopName);
         const action = savedStopNames.has(stopName) ? unsave(stopName) : save(stopName);
-        action.catch((error: unknown) => { console.error("Failed to update saved station:", error); });
+        action
+            .catch((error: unknown) => { console.error("Failed to update saved station:", error); })
+            .finally(() => { pendingSaveTogglesRef.current.delete(stopName); });
     };
 
     // Shown in place of rows when the filters (not a genuinely empty

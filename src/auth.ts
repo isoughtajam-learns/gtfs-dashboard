@@ -4,39 +4,14 @@
 // credentials: "include" so the httponly session cookie the backend sets
 // rides along on every request, including cross-port local dev.
 
+import { HttpError, extractErrorDetail } from "./httpError.ts";
+
 export type AuthUser = {
     email: string;
     username: string;
 };
 
-class AuthError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-        super(message);
-        this.status = status;
-    }
-}
-
-// FastAPI's own 409/401 handlers in main.py send detail as a plain
-// string, but a Pydantic validation failure (422 - e.g. this PR's new
-// password-length/username-charset checks in models.py) sends it as an
-// array of {loc, msg, type} objects instead - String(detail) on that
-// shape renders as an unhelpful "[object Object]".
-function extractErrorDetail(body: unknown, fallback: string): string {
-    if (!body || typeof body !== "object" || !("detail" in body)) return fallback;
-    const detail = (body as { detail: unknown }).detail;
-    if (Array.isArray(detail)) {
-        const messages = detail
-            .map((item) =>
-                item && typeof item === "object" && "msg" in item
-                    ? String((item as { msg: unknown }).msg)
-                    : null,
-            )
-            .filter((msg): msg is string => msg !== null);
-        return messages.length > 0 ? messages.join("; ") : fallback;
-    }
-    return String(detail);
-}
+class AuthError extends HttpError {}
 
 async function parseAuthResponse(res: Response): Promise<AuthUser> {
     if (!res.ok) {
