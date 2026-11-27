@@ -164,28 +164,30 @@ export default function EventStreamComponent({ systemId, systems, onSystemChange
                 onOpenHeaderMenu={openHeaderMenu}
             />
 
-            { messages.length === 0 ? (
-                outsideOperatingHours?.outside_operating_hours ? (
-                    // Authoritative, schedule-derived answer (see
-                    // useTripUpdateStream's outsideOperatingHours comment) -
-                    // takes precedence over the settled/spinner guess below,
-                    // which stays the fallback for a system this can't be
-                    // determined for (no known timezone/calendar data).
-                    <StatusMessage>
-                        <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
-                            Outside operating hours
-                            {outsideOperatingHours.next_service_starts_at && (
-                                <>
-                                    {" "}- back at{" "}
-                                    {new Date(outsideOperatingHours.next_service_starts_at).toLocaleTimeString([], {
-                                        hour: "numeric",
-                                        minute: "2-digit",
-                                    })}
-                                </>
-                            )}
-                        </Box>
-                    </StatusMessage>
-                ) : settled ? (
+            { outsideOperatingHours?.outside_operating_hours ? (
+                // Authoritative, schedule-derived answer (see
+                // useTripUpdateStream's outsideOperatingHours comment) -
+                // checked ahead of messages.length below (not just as a
+                // fallback for an empty buffer) so it also clears any
+                // trips still sitting in the buffer from just before the
+                // system closed, rather than leaving a stale table up with
+                // no indication service has ended.
+                <StatusMessage>
+                    <Box sx={{ fontFamily: "var(--font-body)", fontSize: "0.85rem", color: "var(--ink-secondary)" }}>
+                        Outside operating hours
+                        {outsideOperatingHours.next_service_starts_at && (
+                            <>
+                                {" "}- back at{" "}
+                                {new Date(outsideOperatingHours.next_service_starts_at).toLocaleTimeString([], {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                })}
+                            </>
+                        )}
+                    </Box>
+                </StatusMessage>
+            ) : messages.length === 0 ? (
+                settled ? (
                     // Confirmed, not just "haven't heard back yet": this
                     // system's poll cycle had a fair chance (see
                     // useTripUpdateStream's `settled` comment) and produced

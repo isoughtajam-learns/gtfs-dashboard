@@ -186,6 +186,12 @@ export function useTripFilters(
     // has, so there's no loading state to thread through the UI for this.
     const [allLines, setAllLines] = useState<LineSummary[]>([]);
     const [allStopNames, setAllStopNames] = useState<string[]>([]);
+    // Keyed by systemId so switching back to a system visited earlier this
+    // session restores its checklist immediately below, instead of
+    // resetting to empty and visibly re-expanding once the refetch below
+    // resolves again.
+    const allLinesCacheRef = useRef<Map<string, LineSummary[]>>(new Map());
+    const allStopNamesCacheRef = useRef<Map<string, string[]>>(new Map());
 
     // Fires on system switch only - this is schedule data (changes at most
     // daily), not live data, so it has no business re-running on every SSE
@@ -195,17 +201,26 @@ export function useTripFilters(
     // the checklist's available options) is untouched by this fetch's state
     // or outcome either way - a slow or failed fetch just means the
     // checklist stays buffer-derived a little longer, never a reason to
-    // block the system switch or discard a selection.
+    // block the system switch or discard a selection. Still always
+    // refetches (schedule data can change) rather than trusting the cache
+    // alone - it just seeds from the cache first so a revisit has no
+    // empty window to flicker through while that refetch is in flight.
     useEffect(() => {
         if (!systemId) return;
         let cancelled = false;
-        setAllLines([]);
-        setAllStopNames([]);
+        setAllLines(allLinesCacheRef.current.get(systemId) ?? []);
+        setAllStopNames(allStopNamesCacheRef.current.get(systemId) ?? []);
         void fetchAllLines(systemId)
-            .then((lines) => { if (!cancelled) setAllLines(lines); })
+            .then((lines) => {
+                allLinesCacheRef.current.set(systemId, lines);
+                if (!cancelled) setAllLines(lines);
+            })
             .catch((error: unknown) => { if (!cancelled) console.error("Failed to load all lines:", error); });
         void fetchAllStops(systemId)
-            .then((names) => { if (!cancelled) setAllStopNames(names); })
+            .then((names) => {
+                allStopNamesCacheRef.current.set(systemId, names);
+                if (!cancelled) setAllStopNames(names);
+            })
             .catch((error: unknown) => { if (!cancelled) console.error("Failed to load all stops:", error); });
         return () => { cancelled = true; };
     }, [systemId]);
@@ -223,21 +238,40 @@ export function useTripFilters(
         });
     }, [sort, excludedValues, clearedAll]);
 
-    // Distinct values for the filter checklists: the full set from
-    // allLines/allStopNames once loaded, unioned with whatever's in the
-    // live buffer right now (covers the window before that fetch resolves,
-    // and the edge case of a live trip whose (route, headsign) pair isn't
-    // in the schedule snapshot yet).
-    const distinctValues: Record<FilterField, string[]> = useMemo(() => ({
-        trip_headsign: Array.from(new Set([
-            ...allLines.map((line) => lineFilterValue(line)),
-            ...messages.map((m) => lineFilterValue(m)),
-        ])).sort(),
-        stop_name: Array.from(new Set([
-            ...allStopNames,
-            ...messages.map((m) => m.stop_name),
-        ])).sort(),
-    }), [messages, allLines, allStopNames]);
+    // The schedule-wide part of distinctValues below, kept as its own memo
+    // so it's recomputed only when allLines/allStopNames themselves change
+    // (a system switch) rather than on every SSE message - sorting a
+    // system the size of SF-MTA's ~2,200 stops on every single message
+    // would otherwise be wasted work almost all the time.
+    const sortedAllLineNames = useMemo(
+        () => Array.from(new Set(allLines.map((line) => lineFilterValue(line)))).sort(),
+        [allLines],
+    );
+    const sortedAllStopNames = useMemo(() => Array.from(new Set(allStopNames)).sort(), [allStopNames]);
+    const allLineNamesSet = useMemo(() => new Set(sortedAllLineNames), [sortedAllLineNames]);
+    const allStopNamesSet = useMemo(() => new Set(sortedAllStopNames), [sortedAllStopNames]);
+
+    // Distinct values for the filter checklists: the full schedule-wide set
+    // above, unioned with whatever's in the live buffer right now (covers
+    // the window before that fetch resolves, and the edge case of a live
+    // trip whose (route, headsign) pair isn't in the schedule snapshot
+    // yet). Checks the live buffer against the schedule-wide Sets first and
+    // returns the already-sorted base array unchanged when nothing new
+    // shows up - the common case once a system's schedule has loaded -
+    // rather than re-deduping and re-sorting the whole list on every
+    // message regardless of whether anything in it actually changed.
+    const distinctValues: Record<FilterField, string[]> = useMemo(() => {
+        const newLineNames = messages.map((m) => lineFilterValue(m)).filter((name) => !allLineNamesSet.has(name));
+        const newStopNames = messages.map((m) => m.stop_name).filter((name) => !allStopNamesSet.has(name));
+        return {
+            trip_headsign: newLineNames.length === 0
+                ? sortedAllLineNames
+                : Array.from(new Set([...sortedAllLineNames, ...newLineNames])).sort(),
+            stop_name: newStopNames.length === 0
+                ? sortedAllStopNames
+                : Array.from(new Set([...sortedAllStopNames, ...newStopNames])).sort(),
+        };
+    }, [messages, sortedAllLineNames, sortedAllStopNames, allLineNamesSet, allStopNamesSet]);
 
     // Phase 4 (.claude/plans/development.md): default the feed to a
     // user's saved stations, but ONLY the first time this one-time

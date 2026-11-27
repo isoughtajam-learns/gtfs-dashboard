@@ -27,12 +27,21 @@ type TransitSystemSelectProps = {
     selectedSystemId: string;
     onSystemChange: (systemId: string) => void;
     sx?: SxProps<Theme>;
+    // Opt-in only - every existing caller always has a real id selected by
+    // the time this renders (App.tsx seeds a default as soon as `systems`
+    // loads), so omitting this keeps their behavior byte-for-byte
+    // unchanged. A caller that can render with nothing chosen yet (the
+    // Profile page's "Create new alert" form) passes this so MUI's Select
+    // has something to show instead of going blank - value=="" renders
+    // nothing at all unless displayEmpty is set, and silently so (MUI's
+    // own out-of-range warning explicitly excludes value==="").
+    placeholder?: string;
 };
 
 // Shared by the page header (sm+) and the mobile event-feed toolbar (xs, in
 // place of the header's copy - see Header.tsx) so the two pickers can't
 // visually drift apart.
-export default function TransitSystemSelect({ systems, selectedSystemId, onSystemChange, sx }: TransitSystemSelectProps) {
+export default function TransitSystemSelect({ systems, selectedSystemId, onSystemChange, sx, placeholder }: TransitSystemSelectProps) {
     const handleChange = (event: SelectChangeEvent) => onSystemChange(event.target.value);
 
     return (
@@ -42,6 +51,7 @@ export default function TransitSystemSelect({ systems, selectedSystemId, onSyste
             size="small"
             variant="standard"
             disableUnderline
+            displayEmpty={placeholder !== undefined}
             inputProps={{ "aria-label": "Transit system" }}
             MenuProps={{ slotProps: { paper: { sx: menuPaperSx } } }}
             sx={[
@@ -76,6 +86,11 @@ export default function TransitSystemSelect({ systems, selectedSystemId, onSyste
                 ...(Array.isArray(sx) ? sx : [sx]),
             ]}
         >
+            {placeholder !== undefined && (
+                <MenuItem value="" disabled sx={menuItemSx}>
+                    {placeholder}
+                </MenuItem>
+            )}
             {systems.map((system) => (
                 <MenuItem key={system.id} value={system.id} sx={menuItemSx}>
                     {system.label}
