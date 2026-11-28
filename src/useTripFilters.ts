@@ -87,17 +87,36 @@ function writeStoredFilters(filters: StoredFilters): void {
 // saved-stations default below never fire for a real signup flow. This
 // key instead tracks only whether the one-time seed decision itself has
 // already been made (seeded or skipped), independent of the general blob.
+// Tracks the one-time decision per transit system, not with a single
+// global flag - saved stations are themselves per-system, so a user with
+// saved stations in system A but none in system B, visiting B first,
+// must not permanently skip the seed for A too (the bug a single shared
+// flag had: it marked itself "applied" on the first system to resolve,
+// for any system).
 const SAVED_DEFAULT_APPLIED_KEY = "irl-transit:savedStationsDefaultApplied";
-function hasAppliedSavedStationsDefault(): boolean {
+function hasAppliedSavedStationsDefault(systemId: string): boolean {
     try {
-        return localStorage.getItem(SAVED_DEFAULT_APPLIED_KEY) === "true";
+        const raw = localStorage.getItem(SAVED_DEFAULT_APPLIED_KEY);
+        if (!raw) return false;
+        // JSON.parse of the old format's bare "true" yields the boolean
+        // true, not an array - falls through to false below, so an
+        // existing browser just re-evaluates once per system instead of
+        // crashing on the format change. Harmless: re-firing before this
+        // function returns true is already tolerated (see the effect
+        // below's own comment).
+        const applied: unknown = JSON.parse(raw);
+        return Array.isArray(applied) && applied.includes(systemId);
     } catch {
         return true; // fail toward "don't seed" if storage is unreadable.
     }
 }
-function markSavedStationsDefaultApplied(): void {
+function markSavedStationsDefaultApplied(systemId: string): void {
     try {
-        localStorage.setItem(SAVED_DEFAULT_APPLIED_KEY, "true");
+        const raw = localStorage.getItem(SAVED_DEFAULT_APPLIED_KEY);
+        const parsed: unknown = raw ? JSON.parse(raw) : [];
+        const applied = Array.isArray(parsed) ? parsed : [];
+        if (!applied.includes(systemId)) applied.push(systemId);
+        localStorage.setItem(SAVED_DEFAULT_APPLIED_KEY, JSON.stringify(applied));
     } catch {
         // Best-effort - a future mount may redundantly try to seed again
         // (and no-op, since the user will have real excludedValues by
@@ -275,14 +294,15 @@ export function useTripFilters(
 
     // Phase 4 (.claude/plans/development.md): default the feed to a
     // user's saved stations, but ONLY the first time this one-time
-    // decision is ever made for this browser (SAVED_DEFAULT_APPLIED_KEY) -
-    // never overriding a filter choice the user has already made. NOT
-    // gated on FILTERS_STORAGE_KEY's own presence: the persistence effect
-    // below writes that key unconditionally on every mount, including the
-    // very first one, so checking "does it exist yet" would already be
-    // true by the time any real user has loaded the app even once (which
-    // they must, before they can sign up) - making that check permanently
-    // true and this default permanently dead for real users. Waits for
+    // decision is ever made *for this system* (SAVED_DEFAULT_APPLIED_KEY,
+    // scoped per systemId - see its own comment above) - never overriding
+    // a filter choice the user has already made. NOT gated on
+    // FILTERS_STORAGE_KEY's own presence: the persistence effect below
+    // writes that key unconditionally on every mount, including the very
+    // first one, so checking "does it exist yet" would already be true by
+    // the time any real user has loaded the app even once (which they
+    // must, before they can sign up) - making that check permanently true
+    // and this default permanently dead for real users. Waits for
     // savedStopNamesReady (auth resolved) and distinctValues.stop_name to
     // actually have entries before marking the decision as made, so a
     // still-hydrating session can't be mistaken for "definitely has no
@@ -293,10 +313,40 @@ export function useTripFilters(
     // SSE message), which previously let this fire on just a couple of
     // live-buffer names, mark the decision permanently made, and then
     // never revisit it once the real, full stop list actually arrived.
+    //
+    // excludedValues itself is NOT scoped per system (see FILTERS_STORAGE_KEY's
+    // own persistence effect below - filters deliberately carry across a
+    // system switch), so the `excludedValues.stop_name.size > 0` guard
+    // below can still skip a system's own seed because of exclusions the
+    // user made on a *different* system in the same session. Narrower
+    // than the global-flag bug this fix closes (that one skipped the seed
+    // permanently, for every system, the moment any one system resolved
+    // first), but not eliminated - fully closing it would mean scoping
+    // excludedValues itself per system, a bigger change than this fix.
+    //
+    // Confirmed live a second, more subtle race this per-system scoping
+    // exposed: on the very first render right after systemId changes,
+    // allStopNames/savedStopNames/savedStopNamesReady below are still
+    // whatever the PREVIOUS system resolved to - effects scheduled by the
+    // same commit (this one included) don't see each other's setState
+    // calls until a later render, so a previous system that had already
+    // resolved (non-empty allStopNames, ready=true, 0 saved stations)
+    // satisfies every guard below using entirely stale, wrong-system
+    // data, permanently marking the new system "decided" before its own
+    // real data ever arrives. systemJustChanged (mutated during render,
+    // not in an effect - the same "adjusting state when a prop changes"
+    // pattern as React's own docs, and the one pass where it's true is
+    // exactly the one pass where the values below can't be trusted)
+    // blocks exactly that one pass; the effect naturally re-fires once
+    // allStopNames/savedStopNames actually update for the new system.
+    const lastSeedSystemIdRef = useRef<string | null>(null);
+    const systemJustChanged = lastSeedSystemIdRef.current !== systemId;
+    lastSeedSystemIdRef.current = systemId;
     useEffect(() => {
-        if (hasAppliedSavedStationsDefault()) return;
+        if (systemJustChanged) return;
+        if (hasAppliedSavedStationsDefault(systemId)) return;
         if (!savedStopNamesReady || allStopNames.length === 0) return;
-        markSavedStationsDefaultApplied();
+        markSavedStationsDefaultApplied(systemId);
         if (savedStopNames.size === 0) return;
         // A manual exclusion made during the loading window above (the
         // checklist already works off the live SSE buffer before
@@ -304,14 +354,17 @@ export function useTripFilters(
         // must win over this default, not get silently overwritten by
         // it. Listed as a dependency below purely to satisfy
         // exhaustive-deps - re-firing before the flag above is set is
-        // harmless (same early returns), and firing after is impossible
-        // (markSavedStationsDefaultApplied() already short-circuits it).
+        // harmless (same early returns), and firing again for the same
+        // system after is impossible (markSavedStationsDefaultApplied()
+        // already short-circuits it).
         if (excludedValues.stop_name.size > 0) return;
         setExcludedValues((prev) => ({
             ...prev,
             stop_name: new Set(distinctValues.stop_name.filter((name) => !savedStopNames.has(name))),
         }));
     }, [
+        systemJustChanged,
+        systemId,
         allStopNames,
         distinctValues.stop_name,
         savedStopNames,
